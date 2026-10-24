@@ -1,0 +1,12 @@
+# pnpm 11 fails an install while any dependency build script is unapproved.
+# esbuild and workerd only ship postinstall downloaders, and this build never
+# runs them (vite 8 compiles with rolldown/oxc, and the Cloudflare adapter does
+# not invoke wrangler), so they are pinned off rather than left pending.
+allowBuilds:
+  esbuild: false
+  workerd: false
+
+# First-party types package published near-daily; exempt it from the default
+# minimumReleaseAge hold so installs do not fail on a fresh release.
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types'

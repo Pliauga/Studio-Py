@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="text-scale" content="scale" />
+		<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+		<link
+			rel="preload"
+			href="/fonts/sorts-mill-goudy-400.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+		<link
+			rel="preload"
+			href="/fonts/courier-prime-400.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+		<link
+			rel="preload"
+			href="/fonts/courier-prime-700.woff2"
+			as="font"
+			type="font/woff2"
+			crossorigin
+		/>
+
+		<script>
+			try {
+				document.documentElement.classList.add('js');
+				// One-time move from the pre-rebrand `spatial-*` keys to `studio-py:*`.
+				const legacy = {
+					'spatial-theme': 'studio-py:theme',
+					'spatial-python:progress:v1': 'studio-py:progress:v1',
+					'spatial-python:telemetry:v1': 'studio-py:telemetry:v1'
+				};
+				for (const [from, to] of Object.entries(legacy)) {
+					const value = localStorage.getItem(from);
+					if (value === null) continue;
+					if (localStorage.getItem(to) === null) localStorage.setItem(to, value);
+					localStorage.removeItem(from);
+				}
+				const stored = localStorage.getItem('studio-py:theme');
+				// System-first: the OS decides until the visitor makes an explicit choice.
+				// The value is always written so the CSS has one source of truth pre-paint.
+				const chosen = stored === 'dark' || stored === 'light' ? stored : null;
+				const system = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				document.documentElement.dataset.theme = chosen ?? system;
+			} catch {
+				/* Storage can be blocked; the paper default still applies. */
+			}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

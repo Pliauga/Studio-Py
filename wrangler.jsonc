@@ -1,0 +1,7 @@
+{
+	// Cloudflare Pages project config. `_headers` (the CSP) lives in the project
+	// root and adapter-cloudflare copies it into the build output.
+	"name": "studio-py",
+	"pages_build_output_dir": ".svelte-kit/cloudflare",
+	"compatibility_date": "2026-10-26"
+}
