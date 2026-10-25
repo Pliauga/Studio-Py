@@ -1,0 +1,134 @@
+---
+id: "week-13-command-line-interfaces"
+title: "CLI Tools and File Paths"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+The rerun-driven page from Week 11 is great when a human is awake to click it, but `cron` cannot click a button at 3:14 AM. Every time the on-call engineer wants to scan a different directory or change the warning threshold from a shell pipeline, they have to open your `.py` file and edit a hardcoded variable. Tonight the fleet scanner grows a proper command-line interface, Cross-OS path handling with `pathlib`, and meaningful exit codes that tell automation whether the run succeeded or caught fire.
+
+## Waypoint 1: Paths Are Objects, Not Strings
+
+Joining file paths with `"/"` or `+` works until a script runs on a machine with a different working directory, a trailing slash, or Windows backslashes. `pathlib.Path` treats filesystem locations as structured objects rather than fragile strings.
+
+The `/` operator joins `Path` segments cleanly regardless of operating system. Every `Path` carries methods to inspect the target before you touch it: `.exists()`, `.is_file()`, `.is_dir()`, `.suffix`, and `.stem`. Better still, `.read_text()` and `.write_text()` open, read or write, and close the file in a single call.
+
+```python
+from pathlib import Path
+
+base_dir = Path("exports")
+report_path = base_dir / "2026-10" / "servers.csv"
+
+print(report_path.name)     # servers.csv
+print(report_path.stem)     # servers
+print(report_path.suffix)   # .csv
+print(report_path.parent)   # exports/2026-10
+```
+
+```python
+from pathlib import Path
+
+log_dir = Path(".")
+py_files = sorted(p.name for p in log_dir.glob("*.mdx"))
+print("Found", len(py_files), "lesson files")
+```
+
+<PyExercise id="w13-pathlib-parts" initialCode="from pathlib import Path&#10;p = Path('/var/log/ops/srv-07.log')&#10;# TODO: print the filename without extension, then the extension&#10;print(p.name)" expectedOutput="srv-07 .log" />
+
+## Waypoint 2: Stop Editing the Script to Change the Input
+
+`argparse` turns command-line flags into typed Python attributes. Create an `ArgumentParser`, declare what arguments the script accepts with `.add_argument()`, and call `.parse_args()`.
+
+Positional arguments are required by default; flags starting with `--` are optional and can carry a `default=` and a `type=`. Passing `type=float` or `type=Path` tells `argparse` to convert the incoming string immediately and reject bad input with a usage message before your own code even starts. For boolean switches, `action="store_true"` defaults to `False` and flips to `True` when the flag is present.
+
+```python
+import argparse
+from pathlib import Path
+
+def build_parser():
+    parser = argparse.ArgumentParser(description="Scan server disk records.")
+    parser.add_argument("input_file", type=Path, help="Path to CSV export")
+    parser.add_argument("--warn-at", type=float, default=90.0, help="Warning threshold (%%)")
+    parser.add_argument("--quiet", action="store_true", help="Print only over-limit hosts")
+    return parser
+
+parser = build_parser()
+args = parser.parse_args(["records.csv", "--warn-at", "85", "--quiet"])
+print(args.input_file, args.warn_at, args.quiet)
+```
+
+### Watch out: The Trap
+
+- Leaving out `type=float` or `type=int` on numeric flags. `args.warn_at` arrives as the string `"85"`, and comparing it against a float raises `TypeError`.
+- Using `type=bool` for a flag. `bool("False")` is `True` because any non-empty string is truthy in Python. Use `action="store_true"` instead.
+- Calling `parser.parse_args()` at module import level. Anyone importing a helper from your script triggers CLI parsing on their own `sys.argv`. Keep it inside `main()`.
+
+<PyExercise id="w13-argparse-flags" initialCode="import argparse&#10;parser = argparse.ArgumentParser()&#10;parser.add_argument('--limit', default=100)  # TODO: parse --limit as an integer&#10;parser.add_argument('--verbose', type=bool, default=False)  # TODO: make --verbose a store_true flag&#10;args = parser.parse_args(['--limit', '90', '--verbose'])&#10;print(type(args.limit).__name__, args.limit, args.verbose)" expectedOutput="int 90 True" />
+
+## Waypoint 3: Exit Codes and the Two Output Streams
+
+A shell pipeline does not read your prose to decide if a script succeeded; it checks the process **exit code**. `0` means success, and any non-zero integer (`1`, `2`, etc.) signals failure so `cron`, CI, or `&&` chains know to stop or alert.
+
+A CLI also has two separate text streams: `sys.stdout` for actual data output and `sys.stderr` for diagnostics and errors. When an operator runs `python scan.py records.csv > report.txt`, `stdout` goes into `report.txt` while `print("...", file=sys.stderr)` still appears on their screen instead of corrupting the CSV.
+
+Structure your entrypoint so `main(argv=None)` returns an integer exit code, and let the `if __name__ == "__main__":` block pass it to `sys.exit()`. That makes your entire CLI testable with ordinary function calls.
+
+```python
+import sys
+
+def run_check(used, limit):
+    if limit <= 0:
+        print("Error: limit must be positive", file=sys.stderr)
+        return 2
+    percent = (used / limit) * 100
+    print(f"{percent:.1f}%")
+    return 1 if percent >= 100 else 0
+
+code = run_check(120, 100)
+print("Exit code:", code)
+```
+
+### Watch out: The Trap
+
+- Printing error banners to `stdout`. The next script in the pipeline tries to parse `"Error: file missing"` as a hostname row.
+- Returning `True` or `False` as a shell exit code. In Unix, `0` is success and `1` is failure—the exact opposite of Python's boolean `int(True) == 1`.
+- Calling `sys.exit()` deep inside business logic, which makes unit tests terminate unless they catch `SystemExit`. Return an integer from `main()` instead.
+
+<PyExercise id="w13-exit-code-contract" initialCode="def main(percents):&#10;    over = [p for p in percents if p &gt;= 100]&#10;    for p in over:&#10;        print(f'ALERT: &#123;p&#125;%')&#10;    # TODO: return exit code 1 when any host is over limit, otherwise 0&#10;    return 0&#10;&#10;print('code:', main([85, 102, 91]))&#10;print('code:', main([70, 88]))" expectedOutput="ALERT: 102%&#10;code: 1&#10;code: 0" />
+
+## Waypoint 4: Sweeping a Directory Tree Safely
+
+Instead of handing the tool one file at a time, operators point it at a directory of daily exports. `Path.glob("*.csv")` matches files in one directory, and `Path.rglob("*.csv")` walks subdirectories recursively.
+
+Because filesystem iteration order depends on the OS, always wrap `.glob()` in `sorted()` so every run processes files in a deterministic order. Combine `Path`, `argparse`, and exit-code returns into one cohesive CLI entrypoint.
+
+```python
+import argparse
+from pathlib import Path
+
+def scan_line(line, limit):
+    host, used_str = line.strip().split(",")
+    used = float(used_str)
+    return host.strip().lower(), used >= limit
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=float, default=100.0)
+    args = parser.parse_args(argv)
+
+    sample_lines = ["srv-01,87", "srv-02,115", "srv-03,95"]
+    alerts = 0
+    for raw in sample_lines:
+        host, is_over = scan_line(raw, args.limit)
+        if is_over:
+            print(f"{host}: OVER ({args.limit})")
+            alerts += 1
+    return 1 if alerts > 0 else 0
+
+print("exit:", main(["--limit", "90"]))
+```
+
+## The Debrief
+
+The scanner no longer needs a human editing constants at the top of the file. It accepts typed flags, resolves paths cleanly across platforms, sends errors to `stderr`, and returns a non-zero exit code when the fleet crosses the threshold. Next week we replace raw dictionaries and manual type casts inside the pipeline with self-validating data models.

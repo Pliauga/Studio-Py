@@ -1,0 +1,127 @@
+---
+id: "week-17-generators-and-streaming"
+title: "Generators and Data Streams"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+Someone rotated a month of proxy access logs into a single 14 GB file and asked you how many requests returned `502 Bad Gateway`. Calling `f.readlines()` or building a list comprehension `[parse(line) for line in f]` tries to allocate all 14 GB of Python objects in RAM at once, triggering `MemoryError` (or the OS OOM killer) before your filter even starts. Tonight you stop materializing whole lists and build **lazy streaming pipelines** with `yield` and `itertools` that process a billion lines in constant memory.
+
+## Waypoint 1: `yield` Pauses Instead of Returning All at Once
+
+A normal function with `return` builds the entire result, hands it back, and destroys its local frame. A function containing `yield` is a **generator function**. Calling it does not run a single line of its body; instead, it returns a **generator object** waiting at the top of the function.
+
+Each step of a `for` loop (or each call to `next()`) runs the function just until the next `yield`, hands that one value to the caller, and freezes the function's local state in place until the caller asks for the next item. Only one item has to exist in memory at a time.
+
+```python
+def alert_lines(lines):
+    """Yield only stripped lines that start with ERROR."""
+    for raw in lines:
+        clean = raw.strip()
+        if clean.startswith("ERROR"):
+            yield clean
+
+sample = ["INFO boot ok\n", "ERROR disk full on srv-01\n", "ERROR timeout on srv-02\n"]
+stream = alert_lines(sample)
+print(type(stream))        # generator - nothing parsed yet
+print(next(stream))        # pulls first matching line
+print(list(stream))        # pulls the remaining matching lines
+```
+
+<PyExercise id="w17-yield-over-limit" initialCode="def over_limit_hosts(records: list[tuple[str, float]], limit: float = 100.0):&#10;    &quot;&quot;&quot;Lazily yield each host from (host, pct) records where pct &gt;= limit.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;data = [('srv-01', 85.0), ('srv-02', 104.0), ('srv-03', 110.0)]&#10;print(list(over_limit_hosts(data)))" expectedOutput="['srv-02', 'srv-03']" />
+
+## Waypoint 2: Generator Expressions and Composable Stages
+
+Just as `[x * 2 for x in nums]` builds a list in memory, replacing the square brackets with parentheses `(x * 2 for x in nums)` creates a **generator expression**. It computes each item on demand and feeds functions like `sum()`, `max()`, `min()`, and `any()` without ever allocating an intermediate list.
+
+Better yet, generators snap together like Unix pipes (`cat log | grep ERROR | cut -d',' -f1`). If stage 1 yields raw lines, stage 2 yields parsed dicts from stage 1, and stage 3 yields over-limit hosts from stage 2, a single item flows all the way through `stage1 -> stage2 -> stage3` before the next line is even read from disk.
+
+```python
+raw_lines = [
+    "srv-01,80",
+    "srv-02,105",
+    "srv-03,92",
+    "srv-04,115",
+]
+
+parsed = (line.split(",") for line in raw_lines)
+percents = ((host, float(val)) for host, val in parsed)
+over_limit = (host for host, pct in percents if pct >= 100.0)
+
+print(list(over_limit))
+```
+
+### Watch out: The Trap
+
+- Iterating over the same generator object twice. A generator is a one-way stream: once `list(gen)` or `sum(gen)` exhausts it, a second loop over `gen` yields zero items and raises no error.
+- Calling `len(gen)` or indexing `gen[0]`. Generators do not know their length in advance and do not support indexing; use `sum(1 for _ in gen)` to count items or `next(gen)` to grab the first one.
+- Wrapping a generator inside `list()` before passing it to `sum()`, `max()`, or `any()`, which throws away the memory savings you just wrote the generator to get.
+
+<PredictOutput conceptId="w17-predict-exhausted-generator" codeSnippet="def alerts():&#10;    yield &quot;srv-01&quot;&#10;    yield &quot;srv-02&quot;&#10;&#10;stream = alerts()&#10;print(list(stream))&#10;print(list(stream))" options={["['srv-01', 'srv-02'] then ['srv-01', 'srv-02']", "['srv-01', 'srv-02'] then []", 'TypeError: generator is exhausted']} correctIndex={1} rationale="The first `list(stream)` drains the generator to `StopIteration`; the second call has nothing left to pull, so it returns `[]` rather than replaying. A generator is a one-way stream — call `alerts()` again or keep the list if you need two passes." />
+
+<PyExercise id="w17-exhausted-generator" initialCode="def count_and_peak(readings: list[float], limit: float = 100.0) -&gt; tuple[int, float]:&#10;    &quot;&quot;&quot;Return (count, max_reading) for readings &gt;= limit using generator expressions without exhausting a single generator twice.&quot;&quot;&quot;&#10;    over = (r for r in readings if r &gt;= limit)&#10;    # TODO&#10;    return sum(1 for _ in over), max(over, default=0.0)&#10;&#10;readings = [85.0, 102.0, 110.0, 90.0]&#10;print(*count_and_peak(readings))" expectedOutput="2 110.0" />
+
+## Waypoint 3: Slicing, Batching, and Chaining with `itertools`
+
+The standard library's `itertools` module provides C-speed building blocks for working with streams:
+- `itertools.islice(stream, stop)` or `islice(stream, start, stop)` slices a generator without loading the rest of the file (since `stream[:10]` is a `TypeError` on generators).
+- `itertools.chain(stream_a, stream_b)` walks multiple log files sequentially as if they were one continuous stream.
+- `itertools.batched(stream, n)` (or chunking with `islice`) groups an infinite or massive stream into fixed-size tuples of `n` records so you can bulk-insert 500 rows at a time into SQLite or an API.
+
+```python
+import itertools
+
+def parse_stream(lines):
+    for line in lines:
+        yield line.strip()
+
+file_a = ["srv-01,80\n", "srv-02,90\n"]
+file_b = ["srv-03,105\n", "srv-04,110\n", "srv-05,70\n"]
+
+combined = itertools.chain(parse_stream(file_a), parse_stream(file_b))
+first_three = list(itertools.islice(combined, 3))
+print(first_three)
+```
+
+<PyExercise id="w17-islice-preview" initialCode="import itertools&#10;&#10;def infinite_ids(start: int = 1):&#10;    n = start&#10;    while True:&#10;        yield f'INC-&#123;n:03d&#125;'&#10;        n += 1&#10;&#10;def take_ids(stream, count: int) -&gt; list[str]:&#10;    &quot;&quot;&quot;Return a list of the first `count` items from `stream` without exhausting an infinite iterator.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;print(take_ids(infinite_ids(), 3))" expectedOutput="['INC-001', 'INC-002', 'INC-003']" />
+
+## Waypoint 4: Streaming JSON Lines (`.jsonl`) Without Blowing RAM
+
+Modern log shippers and LLM pipelines rarely write one giant JSON array `[{...}, {...}]` because a parser must read the closing `]` at the end of a 10 GB file to validate it. Instead, they write **JSON Lines** (`.jsonl` / `NDJSON`): one self-contained JSON object per line.
+
+Combine a generator function with `json.loads()` to stream `.jsonl` files line by line, yielding only valid records that match your filter criteria and writing summaries back out incrementally.
+
+```python
+import json
+
+def stream_jsonl_alerts(raw_lines, min_pct: float = 100.0):
+    for line_no, raw in enumerate(raw_lines, start=1):
+        text = raw.strip()
+        if not text:
+            continue
+        record = json.loads(text)
+        if record.get("percent", 0.0) >= min_pct:
+            yield {"line": line_no, "host": record["host"], "percent": record["percent"]}
+
+log_stream = [
+    '{"host": "srv-01", "percent": 82.5}\n',
+    '\n',
+    '{"host": "srv-02", "percent": 104.2}\n',
+    '{"host": "srv-03", "percent": 100.0}\n',
+]
+
+for alert in stream_jsonl_alerts(log_stream):
+    print(f"line {alert['line']}: {alert['host']} ({alert['percent']}%)")
+```
+
+### Watch out: The Trap
+
+- Opening a file inside a helper function, returning a generator expression over `f`, and letting the `with open(...) as f:` block exit before the caller consumes the generator. The file closes immediately and iterating raises `ValueError: I/O operation on closed file`. Put `yield` *inside* the `with open(...)` block so the generator keeps the context manager alive until iteration stops.
+- Calling `json.load(f)` on a `.jsonl` file. `json.load()` expects a single top-level JSON document and raises `json.JSONDecodeError: Extra data` on line 2. Loop over `f` and call `json.loads(line)` on each line.
+
+<PyExercise id="w17-jsonl-generator" initialCode="import json&#10;&#10;lines = [&#10;    '&#123;&quot;host&quot;: &quot;srv-01&quot;, &quot;ok&quot;: true&#125;',&#10;    '&#123;&quot;host&quot;: &quot;srv-02&quot;, &quot;ok&quot;: false&#125;',&#10;    '&#123;&quot;host&quot;: &quot;srv-03&quot;, &quot;ok&quot;: false&#125;',&#10;]&#10;&#10;def failed_hosts(raw_lines: list[str]):&#10;    &quot;&quot;&quot;Parse each JSON line and lazily yield the 'host' value when 'ok' is False.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;print(list(failed_hosts(lines)))" expectedOutput="['srv-02', 'srv-03']" />
+
+## The Debrief
+
+Fourteen gigabytes or fourteen lines now cost the exact same amount of RAM. By replacing intermediate lists with `yield` generators, chaining stages lazily, slicing streams with `itertools.islice`, and parsing `.jsonl` one record at a time, your pipeline processes arbitrarily large exports without breaking a sweat. Next week we give our functions and resource handlers superpowers using decorators and context managers.

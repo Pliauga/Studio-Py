@@ -1,0 +1,142 @@
+---
+id: "week-22-api-security-and-rate-limiting"
+title: "API Security and Rate Limiting"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+Your API is live, and within twenty minutes of opening the port, someone starts guessing passwords on `/login` at 200 requests per second while a spoofed `POST /webhooks/alert` pretends to be your monitoring provider and triggers a fake page. Week 9's bcrypt hashes protect passwords at rest, and Week 10's `?` placeholders stop SQL injection. Tonight you defend the live service with **HMAC webhook verification**, **constant-time token checks**, and **token-bucket rate limiting**.
+
+## Waypoint 1: Never Compare Secrets with `==`
+
+When an agent authenticates with an API token or you verify a cryptographic signature, the standard `a == b` operator checks bytes from left to right and returns `False` at the very first mismatched character. That tiny difference in execution time leaks information to an attacker measuring response latencies over thousands of attempts (a **timing attack**), and generating tokens with `random` instead of the OS cryptographic generator makes tokens predictable.
+
+Generate tokens with `secrets.token_urlsafe(32)` and compare any token or digest with `hmac.compare_digest(a, b)`, which takes the same amount of time whether the strings differ on byte 0 or byte 31.
+
+```python
+import hmac
+import secrets
+
+api_token = secrets.token_urlsafe(16)
+print("Generated length:", len(api_token))
+
+provided = api_token
+wrong = "x" * len(api_token)
+
+print(hmac.compare_digest(provided, api_token))   # True
+print(hmac.compare_digest(wrong, api_token))      # False
+```
+
+<PyExercise id="w22-constant-time-check" initialCode="import hmac&#10;&#10;def verify_bearer(header: str, expected_token: str) -&gt; bool:&#10;    &quot;&quot;&quot;Extract the token after 'Bearer ' and verify it matches `expected_token` in constant time.&quot;&quot;&quot;&#10;    # TODO&#10;    return False&#10;&#10;print(verify_bearer('Bearer tok_123', 'tok_123'), verify_bearer('Bearer wrong', 'tok_123'))" expectedOutput="True False" />
+
+## Waypoint 2: Verifying Webhook Authenticity with HMAC-SHA256
+
+When an external monitoring service sends a `POST` webhook to your server, how do you know the payload actually came from them and was not modified in transit?
+
+Both sides share a secret key. The sender computes an **HMAC-SHA256** digest of `f"{timestamp}.{raw_body}"` using that shared secret and sends the hex digest in a request header (alongside the timestamp). Your server recomputes the exact same HMAC over the raw request body using your copy of the secret, rejects timestamps older than 5 minutes (stopping **replay attacks**), and verifies the signature with `hmac.compare_digest()`.
+
+```python
+import hashlib
+import hmac
+
+def sign_payload(secret: str, timestamp: int, body: str) -> str:
+    msg = f"{timestamp}.{body}".encode("utf-8")
+    return hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+def verify_webhook(
+    secret: str, timestamp: int, body: str, signature: str, now: int, max_skew: int = 300
+) -> bool:
+    if not (0 <= now - timestamp <= max_skew):
+        return False
+    expected = sign_payload(secret, timestamp, body)
+    return hmac.compare_digest(expected, signature)
+
+secret = "whsec_ops_shared_key"
+body = '{"host":"srv-07","percent":103.5}'
+sig = sign_payload(secret, 1700000000, body)
+
+print(verify_webhook(secret, 1700000000, body, sig, now=1700000120))   # True (within 5m)
+print(verify_webhook(secret, 1700000000, body, sig, now=1700000900))   # False (replayed late)
+```
+
+### Watch out: The Trap
+
+- Computing the HMAC over `json.dumps(parsed_dict)` instead of the exact raw request bytes. Whitespace or key-ordering differences change the hash and break valid signatures.
+- Verifying the HMAC signature without checking the timestamp (`0 <= now - timestamp <= max_skew`), or forgets to deduplicate the signature/event ID in Week 20's idempotency store. An attacker who intercepts one valid signed request can replay that exact request unless you reject stale timestamps and duplicate IDs.
+
+<PredictOutput conceptId="w22-predict-raw-body-hmac" codeSnippet="import hashlib, hmac, json&#10;&#10;secret = &quot;whsec_ops&quot;&#10;body = '&#123;&quot;host&quot;:&quot;srv-07&quot;,&quot;percent&quot;:103.5&#125;'&#10;sig = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()&#10;rebuilt = json.dumps(json.loads(body))&#10;again = hmac.new(secret.encode(), rebuilt.encode(), hashlib.sha256).hexdigest()&#10;print(hmac.compare_digest(sig, again))" options={['True', 'False', 'TypeError']} correctIndex={1} rationale="`json.dumps()` re-serializes the parsed body with spaces after `:` and `,`, so the bytes no longer match the signed raw body and the digest check returns `False`. An HMAC covers exact bytes, never a parsed representation." />
+
+<PyExercise id="w22-hmac-tamper" initialCode="import hashlib&#10;import hmac&#10;&#10;def sign_webhook(secret: str, timestamp: int, body: str) -&gt; str:&#10;    msg = f'&#123;timestamp&#125;.&#123;body&#125;'.encode('utf-8')&#10;    return hmac.new(secret.encode('utf-8'), msg, hashlib.sha256).hexdigest()&#10;&#10;def verify_webhook(&#10;    secret: str, timestamp: int, body: str, signature: str, now: int, max_skew: int = 300&#10;) -&gt; bool:&#10;    &quot;&quot;&quot;Verify that `timestamp` is within [now - max_skew, now] and `signature` matches the HMAC-SHA256 digest.&quot;&quot;&quot;&#10;    # TODO&#10;    return False&#10;&#10;secret = 'whsec_ops_key'&#10;body = '&#123;&quot;host&quot;:&quot;srv-01&quot;,&quot;pct&quot;:95&#125;'&#10;ts = 1700000000&#10;sig = sign_webhook(secret, ts, body)&#10;results = [&#10;    verify_webhook(secret, ts, body, sig, now=1700000120),&#10;    verify_webhook(secret, ts, '&#123;&quot;host&quot;:&quot;srv-01&quot;,&quot;pct&quot;:10&#125;', sig, now=1700000120),&#10;    verify_webhook(secret, ts, body, sig, now=1700000900),&#10;    verify_webhook(secret, ts + 60, body, sign_webhook(secret, ts + 60, body), now=ts),&#10;]&#10;print(results)" expectedOutput="[True, False, False, False]" />
+
+## Waypoint 3: Token-Bucket Rate Limiting
+
+Even with strong passwords, an endpoint that allows 10,000 login attempts per second from a single IP address wastes CPU and invites brute-force attacks.
+
+A **token bucket** rate limiter gives each client key (IP address or user ID) a bucket that holds up to `capacity` tokens and refills at `refill_rate` tokens per second. Each request costs 1 token: if the bucket has at least 1 token, deduct 1 and allow the request (`200 OK`); if the bucket is empty, reject the request immediately with HTTP `429 Too Many Requests` and a `Retry-After` header.
+
+```python
+class TokenBucketLimiter:
+    def __init__(self, capacity: float, refill_per_sec: float) -> None:
+        self.capacity = capacity
+        self.rate = refill_per_sec
+        self.buckets: dict[str, tuple[float, float]] = {}
+
+    def allow(self, client_id: str, now: float) -> bool:
+        tokens, last_time = self.buckets.get(client_id, (self.capacity, now))
+        elapsed = max(0.0, now - last_time)
+        tokens = min(self.capacity, tokens + elapsed * self.rate)
+        if tokens < 1.0:
+            self.buckets[client_id] = (tokens, now)
+            return False
+        self.buckets[client_id] = (tokens - 1.0, now)
+        return True
+
+limiter = TokenBucketLimiter(capacity=2.0, refill_per_sec=1.0)
+print(limiter.allow("10.0.0.5", now=0.0))   # True (1.0 left)
+print(limiter.allow("10.0.0.5", now=0.0))   # True (0.0 left)
+print(limiter.allow("10.0.0.5", now=0.2))   # False (only 0.2 refilled)
+print(limiter.allow("10.0.0.5", now=1.0))   # True (1.0 refilled)
+```
+
+### Watch out: The Trap
+
+- Storing one bucket per IP in an unbounded `dict` (`self.buckets`). During a spoofed-IP flood, millions of unique keys will exhaust RAM—the exact high-cardinality trap from Week 19. In production, store buckets in Week 21's `TTLCache` (or Redis with `EXPIRE`) so idle IP entries evict automatically.
+
+<PyExercise id="w22-fixed-window-limiter" initialCode="class TokenBucketLimiter:&#10;    def __init__(self, capacity: float, refill_per_sec: float) -&gt; None:&#10;        self.capacity = capacity&#10;        self.rate = refill_per_sec&#10;        self.buckets: dict[str, tuple[float, float]] = &#123;&#125;&#10;&#10;    def allow(self, client_id: str, now: float) -&gt; bool:&#10;        &quot;&quot;&quot;Refill client_id's bucket over elapsed time up to capacity; consume 1.0 token and return True if &gt;= 1.0 available.&quot;&quot;&quot;&#10;        # TODO&#10;        return False&#10;&#10;limiter = TokenBucketLimiter(capacity=2.0, refill_per_sec=1.0)&#10;outcomes = [&#10;    limiter.allow('10.0.0.5', now=0.0),&#10;    limiter.allow('10.0.0.5', now=0.0),&#10;    limiter.allow('10.0.0.5', now=0.2),&#10;    limiter.allow('10.0.0.5', now=1.0),&#10;]&#10;print(outcomes)" expectedOutput="[True, True, False, True]" />
+
+## Waypoint 4: Path Traversal and Subprocess Boundaries
+
+Two final boundary vulnerabilities show up whenever an ops service touches the local OS:
+1. **Path Traversal**: If a user requests report file `../../etc/passwd` and you join it naively onto `reports/`, they escape your directory. Always resolve both paths with `Path.resolve()` and verify `target.is_relative_to(base_dir)`.
+2. **Command Injection**: Never call `subprocess.run(f"ping -c 1 {host}", shell=True)`. A hostname like `srv-01; rm -rf /` runs as a second shell command. Pass a list of arguments `["ping", "-c", "1", host]` with `shell=False` (the default) so the OS executes `ping` directly and treats `host` strictly as a single argument, just like SQLite's `?` placeholder.
+
+```python
+from pathlib import Path
+
+def safe_report_path(base_dir: Path, requested_name: str) -> Path:
+    root = base_dir.resolve()
+    candidate = (root / requested_name).resolve()
+    if not candidate.is_relative_to(root):
+        raise PermissionError(f"Path traversal blocked: {requested_name}")
+    return candidate
+
+base = Path("/var/ops/reports")
+print(safe_report_path(base, "2026-10/summary.csv").name)
+
+try:
+    safe_report_path(base, "../../etc/passwd")
+except PermissionError as exc:
+    print(exc)
+```
+
+### Watch out: The Trap
+
+- Using `shell=True` in `subprocess.run()` with any string that came from a request, file, or database row. Pass an argument list `["cmd", arg1, arg2]` with `shell=False`.
+- Checking `".." not in filename` with string replacement instead of `.resolve().is_relative_to(root)`. Symlinks and URL encodings bypass naive string filters; `.resolve()` canonicalizes the real path first.
+
+<PyExercise id="w22-path-jail" initialCode="from pathlib import Path&#10;&#10;def is_safe_path(base: str, user_input: str) -&gt; bool:&#10;    &quot;&quot;&quot;Resolve `base` and `base / user_input` and return True only if the target remains inside `base`.&quot;&quot;&quot;&#10;    # TODO&#10;    return False&#10;&#10;print(is_safe_path('/tmp/reports', 'daily/eu.csv'), is_safe_path('/tmp/reports', '../secrets.env'))" expectedOutput="True False" />
+
+## The Debrief
+
+The perimeter is now built for hostile traffic. Secrets and tokens use `secrets` and `hmac.compare_digest()`, incoming webhooks prove their origin and freshness via timestamped HMAC-SHA256 signatures, token buckets throttle brute-force floods with `429`, and filesystem and process boundaries reject traversal and shell injection by design. Next week we level up our test suite with fixtures, parameterized matrices, and property checks.

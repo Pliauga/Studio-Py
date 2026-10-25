@@ -1,0 +1,152 @@
+---
+id: "week-14-dataclasses-and-validation"
+title: "Dataclasses and Type Validation"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+Six scripts now pass server records around as plain dictionaries. One script calls the key `"host"`, another calls it `"hostname"`, and a third stores `"used"` as a string `"87.0"` until arithmetic blows up three functions later. Week 5's classes fixed attribute access, but writing `__init__`, `__repr__`, and `__eq__` by hand for every record type gets old fast. Tonight you declare the exact shape and types of your data with **type hints**, **`dataclasses`**, and boundary **validation** so bad records fail at the door instead of deep in the math.
+
+## Waypoint 1: Type Hints Document the Contract
+
+A **type hint** annotates a variable, parameter, or return value with its expected type: `hostname: str`, `used: float`, `-> list[str]`. Python does not enforce type hints automatically at runtime, which means adding them never slows down your loop, while editors, linters, and human readers immediately see whether a function expects a filename string, a `Path`, or an open file handle.
+
+When a value can legitimately be `None` (like Week 12's optional AI summary), annotate it as `str | None` so callers know they must check for `None` before calling `.strip()`.
+
+```python
+def format_status(hostname: str, used: float, limit: float = 100.0) -> str:
+    percent: float = (used / limit) * 100
+    state: str = "OVER LIMIT" if percent >= 100 else "OK"
+    return f"{hostname}: {state} ({percent:.1f}%)"
+
+def find_host(records: list[dict[str, float]], target: str) -> dict[str, float] | None:
+    for r in records:
+        if r.get("name") == target:
+            return r
+    return None
+
+print(format_status("srv-01", 87.0))
+```
+
+<PyExercise id="w14-type-contract" initialCode="def parse_percent(raw: str | None) -&gt; float:&#10;    # TODO: return 0.0 when raw is None, otherwise strip '%' and convert to float&#10;    return float(raw)&#10;&#10;print(parse_percent('92.5%'), parse_percent(None))" expectedOutput="92.5 0.0" />
+
+## Waypoint 2: Dataclasses Write the Boilerplate for You
+
+Decorating a class with `@dataclass` inspects its type-annotated fields and generates `__init__`, a readable `__repr__` for printing, and value-based `__eq__` comparison automatically. Two `HostReading` instances with the same fields compare equal (`==`), unlike hand-rolled classes from Week 5 which compare equal only if they are the exact same object in memory.
+
+Pass `frozen=True` to `@dataclass(frozen=True)` when a record represents an immutable event or reading that no downstream function should be allowed to mutate.
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class HostReading:
+    hostname: str
+    used_gb: float
+    limit_gb: float = 100.0
+
+    def percent(self) -> float:
+        return (self.used_gb / self.limit_gb) * 100
+
+r1 = HostReading("srv-01", 87.0)
+r2 = HostReading("srv-01", 87.0)
+print(r1)
+print(r1 == r2)       # True - compares field values
+print(r1.percent())   # 87.0
+```
+
+### Watch out: The Trap
+
+- Using a mutable default like `tags: list[str] = []` on a dataclass field. Python raises `ValueError: mutable default <class 'list'> for field tags is not allowed` to save you from every instance sharing the same list. Use `field(default_factory=list)`.
+- Putting a field without a default after a field with a default. Just like function parameters, defaulted fields must come last.
+- Trying to reassign an attribute on a `frozen=True` dataclass, which raises `FrozenInstanceError`. Use `dataclasses.replace(obj, used_gb=90.0)` to create an updated copy.
+
+<PredictOutput conceptId="w14-predict-mutable-default" codeSnippet="from dataclasses import dataclass&#10;&#10;@dataclass&#10;class AlertBatch:&#10;    region: str&#10;    hosts: list[str] = []&#10;&#10;b1 = AlertBatch(&quot;eu&quot;)&#10;print(b1.hosts)" options={['[]', 'ValueError', 'TypeError']} correctIndex={1} rationale="Decorating the class raises `ValueError` before `AlertBatch(&quot;eu&quot;)` ever runs: a mutable default would be shared by every instance, so dataclasses refuse it outright. `field(default_factory=list)` is the fix — each instance gets a fresh list." />
+
+<PyExercise id="w14-default-factory" initialCode="from dataclasses import dataclass, field&#10;&#10;@dataclass&#10;class AlertBatch:&#10;    region: str&#10;    # TODO: replace the mutable default list with field(default_factory=list)&#10;    hosts: list[str] = []&#10;&#10;b1 = AlertBatch('eu')&#10;b2 = AlertBatch('us')&#10;b1.hosts.append('srv-01')&#10;b2.hosts.append('srv-09')&#10;print(b1.hosts, b2.hosts)" expectedOutput="['srv-01'] ['srv-09']" />
+
+## Waypoint 3: Reject Bad Data at Construction Time
+
+Because type hints alone do not stop someone from calling `HostReading("", -15.0, 0.0)`, dataclasses provide `__post_init__(self)`, which runs immediately after the generated `__init__` assigns the fields.
+
+Use `__post_init__` to normalize strings and enforce invariants: a hostname must not be blank, `used_gb` cannot be negative, and `limit_gb` must be strictly positive so `.percent()` can never hit `ZeroDivisionError`. Once a `HostReading` exists, every function that receives it can trust its fields without re-checking them.
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class HostReading:
+    hostname: str
+    used_gb: float
+    limit_gb: float = 100.0
+
+    def __post_init__(self) -> None:
+        self.hostname = self.hostname.strip().lower()
+        self.used_gb = float(self.used_gb)
+        self.limit_gb = float(self.limit_gb)
+        if not self.hostname:
+            raise ValueError("hostname must not be empty")
+        if self.used_gb < 0:
+            raise ValueError(f"used_gb cannot be negative: {self.used_gb}")
+        if self.limit_gb <= 0:
+            raise ValueError(f"limit_gb must be positive: {self.limit_gb}")
+
+reading = HostReading("  SRV-04 ", "85.5", 100)
+print(reading)
+```
+
+<PyExercise id="w14-post-init-guard" initialCode="from dataclasses import dataclass&#10;&#10;@dataclass&#10;class HostReading:&#10;    hostname: str&#10;    used_gb: float&#10;    limit_gb: float = 100.0&#10;&#10;    def __post_init__(self):&#10;        self.hostname = self.hostname.strip().lower()&#10;        # TODO: raise ValueError if self.limit_gb &lt;= 0&#10;&#10;ok = HostReading('  SRV-01 ', 50.0, 100.0)&#10;try:&#10;    HostReading('srv-01', 50.0, 0.0)&#10;    guard = 'accepted'&#10;except ValueError:&#10;    guard = 'rejected zero limit'&#10;print(ok.hostname, '|', guard)" expectedOutput="srv-01 | rejected zero limit" />
+
+## Waypoint 4: Schema Validation and Serialization for Untrusted JSON
+
+When payloads arrive over HTTP or from external config files, you often want automatic type coercion and rich field-level error reports across nested structures. In production Python services (and FastAPI next week), **Pydantic** (`BaseModel`) extends the dataclass pattern to validate and serialize untrusted dictionaries automatically; in standard library code, `dataclasses.asdict()` paired with a `from_dict()` classmethod gives you the same clean boundary between raw JSON dicts and validated domain objects.
+
+Collect validation failures into a quarantine list while loading a batch so one malformed row from a broken sensor gets logged with its line number instead of aborting the entire sweep.
+
+```python
+from dataclasses import dataclass, asdict
+
+@dataclass
+class MetricEvent:
+    host: str
+    cpu_pct: float
+
+    @classmethod
+    def from_raw(cls, payload: dict) -> "MetricEvent":
+        if "host" not in payload or "cpu_pct" not in payload:
+            raise ValueError("Missing required fields: host, cpu_pct")
+        host = str(payload["host"]).strip().lower()
+        cpu = float(payload["cpu_pct"])
+        if not (0.0 <= cpu <= 100.0):
+            raise ValueError(f"cpu_pct out of range: {cpu}")
+        return cls(host=host, cpu_pct=cpu)
+
+raw_batch = [
+    {"host": "SRV-01", "cpu_pct": "42.5"},
+    {"host": "SRV-02", "cpu_pct": 140.0},
+    {"host": "SRV-03", "cpu_pct": 91.0},
+]
+
+valid, rejected = [], 0
+for item in raw_batch:
+    try:
+        valid.append(asdict(MetricEvent.from_raw(item)))
+    except (ValueError, TypeError):
+        rejected += 1
+
+print("Valid:", len(valid), "Rejected:", rejected)
+print(valid[0])
+```
+
+### Watch out: The Trap
+
+- Letting raw `dict` payloads travel deep into business logic. Validate once at the ingestion boundary and pass typed instances everywhere else.
+- Catching `Exception` silently during validation and dropping bad records with no counter or log entry. Always count and report quarantined rows.
+- Mutating the caller's input dictionary inside `from_raw()` with `.pop()`. Read from the dictionary without destroying it in case the error handler needs to log the raw payload.
+
+<PyExercise id="w14-quarantine-batch" initialCode="raw_rows = [('srv-01', 80), ('', 95), ('srv-02', -5), ('srv-03', 100)]&#10;clean = []&#10;errors = 0&#10;for host, pct in raw_rows:&#10;    # TODO: keep only rows with non-empty host and 0 &lt;= pct &lt;= 100; count the rest in errors&#10;    clean.append((host, pct))&#10;print(len(clean), errors)" expectedOutput="2 2" />
+
+## The Debrief
+
+Your fleet records are no longer anonymous dictionaries hoping everyone spells `"hostname"` the same way. They carry explicit type annotations, print and compare cleanly as dataclasses, normalize and validate their fields on creation, and quarantine malformed inputs at the edge. Next week those validated models become the request and response contracts of a live HTTP API.

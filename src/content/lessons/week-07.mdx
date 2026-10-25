@@ -1,0 +1,129 @@
+---
+id: "week-07-strings-and-text"
+title: "String Manipulation"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+The auth log is four thousand lines and half of them are lying to you. The same box appears as ` SRV-01 `, `Srv-01`, `srv_01_east`, and your Week 4 parser splits on commas and hands back garbage. Before a single line can be counted, it has to be cleaned. **Strings** are the tools, and this is the night they stop being an afterthought.
+
+## Waypoint 1: Case and Whitespace
+
+`"SRV-01" == "srv-01"` is `False`. Same server, different text. Python does not assume two spellings mean the same thing, so you have to say so: `.lower()` both sides before comparing, or normalise once on the way in.
+
+`.upper()`, `.lower()` and `.title()` each return a **new string**. Strings are immutable, as Week 4 taught, so the original never changes. Forget the assignment and nothing appears to happen.
+
+`.strip()` removes whitespace from both ends and is the single most valuable cleaning step you own, because the leading space you cannot see in `print()` is exactly what breaks a dictionary lookup. `.lstrip()` and `.rstrip()` do one side. Pass a character and it strips that instead: `strip("*")` turns a wrapped `***srv-01***` into a hostname, the same move against decoration instead of space. Methods chain left to right, so `.strip().lower()` is the normal way to handle a hostname.
+
+```python
+hostname_a = "SRV-01"
+hostname_b = "srv-01"
+
+print(hostname_a == hostname_b)
+print(hostname_a.lower() == hostname_b.lower())
+
+raw = " srv-01 "
+print(f"[{raw}]")
+print(f"[{raw.strip()}]")
+
+field = " SRV-01 "
+print(field.strip().lower())
+```
+
+<PyExercise id="w07-strip-normalise" initialCode="raw = '  SRV-01  '&#10;clean = raw  # TODO: strip the whitespace, then lowercase it&#10;print(clean)" expectedOutput="srv-01" />
+
+## Waypoint 2: Asking What Text Contains
+
+`in` answers yes or no, and it is case-sensitive. Normalise first if case should not matter.
+
+`.find()` answers **where**, returning the starting index or `-1` for not found. Not an error, not `None`, and position `0` is a real answer, so a careless `if line.find(x):` misses a match at the very start.
+
+`.replace()` swaps every occurrence, case-sensitive like everything else this week. `.startswith()`, `.endswith()` and `.count()` are the filtering tools: log level at the front, extension at the back, repeated warnings in between.
+
+```python
+line = "2026-09-08 ERROR failed to connect to srv-01"
+
+print("ERROR" in line)
+print("error" in line)           # case matters
+print("error" in line.lower())   # normalise first
+print(line.find("ERROR"))        # 11 - where, not whether
+print(line.find("WARNING"))      # -1 - not found
+
+hostname = "srv_01_east"
+print(hostname.replace("_", "-"))
+
+for l in ["ERROR: disk full", "INFO: backup complete"]:
+    if l.startswith("ERROR"):
+        print("Needs attention:", l)
+```
+
+### Watch out: The Trap
+
+- `.find()` returns a number, so `line.find(x) == True` is never true. Use `in` for yes/no and `.find()` for position.
+- `-1` is truthy. Always compare explicitly: `if line.find(x) != -1:`.
+- `.replace()` and `in` are case-sensitive. `.lower()` first if the case should not matter.
+- `.startswith()` needs the exact prefix at position 0. If the text merely contains it, you wanted `in`.
+
+## Waypoint 3: Split, Then Put It Back Together
+
+`.split()` with no argument splits on whitespace, any amount of it, which handles the ragged spacing in a status line. `.split(sep, maxsplit)` stops after N splits and leaves the remainder in one piece. That is exactly what pulls a hostname off the front of a record without shredding the rest.
+
+`.join()` is the reverse, and it is called on the separator, not on the list: `",".join(parts)`. It needs strings, so a list of numbers must be converted first.
+
+f-strings build the clean report line, same as Week 1, now with real data and field widths. The width specifiers line the columns up by eye, which is all an exhausted operator needs at 2 AM.
+
+```python
+messy = "srv-01    used=87    total=100"
+print(messy.split())                 # whitespace, any amount
+
+record = "srv-01,used=87,total=100"
+print(record.split(",", 1))          # one split, rest stays together
+
+parts = ["srv-01", "87", "100"]
+print(" | ".join(parts))
+
+numbers = [87, 100]
+print(",".join(str(n) for n in numbers))
+
+hostname, used, total = "srv-01", 87.0, 100.0
+print(f"{hostname:<10} {used:>6.1f}/{total:<6.1f}")
+```
+
+<PyExercise id="w07-maxsplit-record" initialCode="record = 'srv-01,used=87,total=100'&#10;hostname, rest = record.split(',')  # TODO: stop after the first split&#10;print(hostname, '|', rest)" expectedOutput="srv-01 | used=87,total=100" />
+
+## Waypoint 4: The Whole Pipeline
+
+Parsing one real line is four moves: strip it, split off the hostname, clean that piece, then split the remainder into `key=value` pairs and convert the values. Keep them as named steps until you trust them, then wrap the steps in a function so the next line costs one call.
+
+Real text does not fail one way. An extra `=` raises `ValueError: too many values to unpack`; a missing field raises `KeyError`; a non-numeric value raises `ValueError: could not convert string to float`. Knowing which error means what is most of the job at 2 AM. The quiet failure is the one no exception catches: the right fields with the wrong units.
+
+```python
+def parse_line(raw_line):
+    """Turn one messy status line into a clean dict."""
+    line = raw_line.strip()
+    hostname_part, rest = line.split(",", 1)
+    hostname = hostname_part.strip().lower()
+
+    fields = {}
+    for piece in rest.split(","):
+        key, value = piece.split("=")
+        fields[key.strip().lower()] = float(value.strip())
+
+    return {"hostname": hostname, "used": fields["used"], "total": fields["total"]}
+
+print(parse_line("  Srv-01 , used=87 , total=100  "))
+```
+
+### Watch out: The Trap
+
+- Assuming every line is well-formed guarantees a 2 AM surprise. Test the three failures before they happen live.
+- Clean before you convert. Calling `.strip()` on a float raises `AttributeError`, because numbers have no string methods.
+- A three-line chain is unreadable when it breaks. Keep the pipeline as named steps, as above.
+- Repeating the OVER LIMIT / WARNING / OK check inline for every line means the same logic typed twice, and eventually two versions that disagree. Write `status_of(...)` once.
+
+<PyExercise id="w07-pipeline-first-steps" initialCode="raw_line = '  Srv-01 , used=87 , total=100  '&#10;line = raw_line.strip()&#10;hostname_part, rest = line.split(',', 1)&#10;print(hostname_part, '|', rest)  # TODO: clean the hostname before printing" expectedOutput="srv-01 |  used=87 , total=100" />
+
+## The Debrief
+
+Four thousand dirty lines, one function, clean dictionaries. The log now says `srv-01` every time it means `srv-01`, and the status check lives in one place instead of eleven. Next week the data stops arriving as a file at all, and you have to go ask a service for it.

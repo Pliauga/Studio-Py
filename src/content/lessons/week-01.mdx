@@ -1,0 +1,114 @@
+---
+id: "week-01-variables-types-and-output"
+title: "Variables, Types, and Output"
+estimatedMinutes: 16
+---
+
+## The Hook
+
+It is 2:47 AM and the primary storage node on `srv-07` is filling up fast. Someone left a sticky note on the monitor with the disk capacity and current usage, and you are doing percentage math on a phone calculator while the alert channel pings. You do not need a dashboard yet. You need Python to hold two numbers, divide them without lying about the types, and print one clean status line you can paste into the ticket.
+
+## Waypoint 1: Print What You Mean, Name What You Keep
+
+`print()` writes whatever you hand it to the terminal, one line per call. Pass multiple items separated by commas and Python prints them with a single space in between.
+
+A **variable** gives a value a name so you do not have to type the literal twice. The `=` sign assigns the value on the right to the name on the left. Python reads top to bottom: if you use a name before you assign it, or mistype a single character, execution stops immediately with `NameError`. Reassigning the same name overwrites the old value; anything computed before the reassignment keeps the value it had at the time.
+
+Variable names use `snake_case`: lowercase letters, digits, and underscores, never starting with a digit and never containing spaces or hyphens (`srv_07` is a valid variable name; `srv-07` tries to subtract `7` from `srv`).
+
+```python
+hostname = "srv-07"
+used_gb = 190
+total_gb = 200
+
+print("Host:", hostname)
+print("Used:", used_gb, "GB")
+
+used_gb = 195
+print("Updated used:", used_gb, "GB")
+```
+
+<PyExercise id="w01-assign-and-print" initialCode="hostname = 'srv-07'&#10;used_gb = 180&#10;# TODO: update used_gb to 190 before printing&#10;print(hostname, used_gb)" expectedOutput="srv-07 190" />
+
+## Waypoint 2: Every Value Has a Type
+
+Python distinguishes between text and numbers even when they look identical on screen. `"200"` in quotes is a **string** (`str`), `200` without quotes is an **integer** (`int`), and `200.0` with a decimal point is a **floating-point number** (`float`). Calling `type(x)` tells you which one you are holding.
+
+The type decides what operators do. Between numbers, `+` adds and `*` multiplies. Between strings, `+` glues text together (concatenation) and `*` repeats it. Mixing a string and a number with `+` raises `TypeError`, because Python refuses to guess whether `"200" + 5` should be `205` or `"2005"`.
+
+When data arrives from user input or a text export, it arrives as `str`. Convert it explicitly with `int()`, `float()`, or `str()` before doing math.
+
+```python
+raw_used = "190"
+total_gb = 200
+
+print(type(raw_used))
+print(type(total_gb))
+
+used_gb = float(raw_used)
+print(type(used_gb))
+print(used_gb + 5)
+```
+
+### Watch out: The Trap
+
+- `"190" + "10"` evaluates to `"19010"`, not `200`. No error is raised when both sides are strings.
+- `"190" + 10` raises `TypeError`. Convert the string with `int()` or `float()` first.
+- `int("87.5")` raises `ValueError`. Parse decimal strings with `float("87.5")` first, then convert to `int()` if you want truncation.
+- Quotes around a variable name (`print("hostname")`) print the literal word `hostname` instead of the value stored in it.
+
+<PyExercise id="w01-cast-before-math" initialCode="raw_used = '87.5'&#10;bonus = 12.5&#10;total = raw_used  # TODO: convert raw_used to a float and add bonus&#10;print(total)" expectedOutput="100.0" />
+
+<PredictOutput conceptId="w01-predict-string-concat" codeSnippet="raw_used = &quot;190&quot;&#10;print(raw_used + &quot;10&quot;)" options={['"19010"', '200', 'TypeError']} correctIndex={0} rationale="Both operands are strings, so `+` concatenates. Nothing is parsed, nothing raises: the learner has to see that the quotes are load-bearing." />
+
+## Waypoint 3: Arithmetic That Does Not Surprise You
+
+Standard arithmetic uses `+`, `-`, `*`, and `/`. In Python, `/` always produces a `float`, even when two integers divide evenly: `200 / 100` is `2.0`.
+
+Three additional operators show up constantly in infrastructure scripts: `//` performs floor division (the whole-number quotient, dropping the remainder), `%` returns the remainder (modulo), and `**` raises a number to a power.
+
+Parentheses control evaluation order. Calculating a percentage or a delta without parentheses around the subtraction (`used - baseline / total`) divides `baseline` by `total` first and hands you nonsense without warning.
+
+```python
+used = 87
+limit = 100
+
+percent = (used / limit) * 100
+remaining = limit - used
+print(percent)
+print(remaining)
+
+total_minutes = 135
+hours = total_minutes // 60
+minutes = total_minutes % 60
+print(hours, "hours", minutes, "minutes")
+```
+
+<PyExercise id="w01-delta-percentage" initialCode="start_used = 120&#10;current_used = 170&#10;limit = 200&#10;# TODO: fix the brackets so growth is subtracted before dividing by limit&#10;growth_pct = current_used - start_used / limit * 100&#10;print(growth_pct)" expectedOutput="25.0" />
+
+## Waypoint 4: One Clean Line with f-strings
+
+Gluing strings and numbers together with commas or `str()` calls gets noisy the moment a line has three values and a unit sign. An **f-string** prefixes the opening quote with `f` and evaluates any expression inside `{}` directly into the text.
+
+Add a format specifier after a colon inside the braces—such as `:.1f` for one decimal place or `:.2f` for two—to stop floating-point inaccuracy (`87.33333333333333%`) from cluttering an alert line.
+
+```python
+hostname = "srv-07"
+used = 187.5
+limit = 200.0
+percent = (used / limit) * 100
+
+print(f"{hostname}: {used} GB of {limit} GB ({percent:.1f}%)")
+```
+
+### Watch out: The Trap
+
+- Omitting the leading `f` before the quote prints the literal characters `{hostname}` instead of the variable's value.
+- Using `^` for exponentiation (`2 ^ 3`) performs bitwise XOR (`1`), not powers. Use `**`.
+- Dividing by zero (`used / 0`) immediately halts the script with `ZeroDivisionError`.
+
+<PyExercise id="w01-fstring-report" initialCode="hostname = 'srv-07'&#10;used = 190&#10;limit = 200&#10;percent = (used / limit) * 100&#10;# TODO: format as 'srv-07: 95.0% used'&#10;print(f'&#123;hostname&#125;')" expectedOutput="srv-07: 95.0% used" />
+
+## The Debrief
+
+The sticky note is gone. Your script holds the host label and its numbers, converts raw text into floats before doing arithmetic, and formats a readable one-line report. Right now a human still has to read `95.0%` and decide whether to page someone. Next week the script learns to make that decision on its own.

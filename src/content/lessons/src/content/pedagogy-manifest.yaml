@@ -1,0 +1,1899 @@
+version: 1
+waypoints:
+  - id: w01-wp1
+    week: 1
+    constructs: [ast.Assign, ast.Call]
+    tokens: ["used_gb = 190", "print(hostname, used_gb)"]
+  - id: w01-wp2
+    week: 1
+    constructs: [ast.Assign, ast.BinOp, ast.Call]
+    tokens: ["float(raw_used)", "float(raw_used) + bonus"]
+  - id: w01-wp3
+    week: 1
+    constructs: [ast.Assign, ast.BinOp, ast.Call]
+    tokens: ["(current_used - start_used) / limit", "* 100"]
+  - id: w01-wp4
+    week: 1
+    constructs: [ast.JoinedStr, ast.FormattedValue, ast.Call]
+    tokens: ["f'{hostname}: {percent:.1f}% used'", ":.1f"]
+  - id: w02-wp1
+    week: 2
+    constructs: [ast.BoolOp, ast.Compare, ast.Call]
+    tokens: [">= 90", "and", "< 100"]
+  - id: w02-wp2
+    week: 2
+    constructs: [ast.If, ast.Compare, ast.Assign]
+    tokens: ["if percent >= 100:", "elif percent >= 90:"]
+  - id: w02-wp3
+    week: 2
+    constructs: [ast.While, ast.Compare, ast.AugAssign, ast.Continue]
+    tokens: ["while count <= 3:", "count += 1", "continue"]
+  - id: w02-wp4
+    week: 2
+    constructs: [ast.For, ast.Call, ast.AugAssign]
+    tokens: ["for i in range(1, 6):", "total += i"]
+  - id: w03-wp1
+    week: 3
+    constructs: [ast.FunctionDef, ast.Return, ast.BinOp]
+    tokens: ["def add_tax(price):", "return price * 1.2"]
+  - id: w03-wp2
+    week: 3
+    constructs: [ast.FunctionDef, ast.If, ast.Return]
+    tokens: ["def status_of(percent, warning_at=90):", "elif percent >= warning_at:"]
+  - id: w03-wp3
+    week: 3
+    constructs: [ast.FunctionDef, ast.Return, ast.Tuple]
+    tokens: ["return difference, percent", "difference, percent = check_record(87, 100)"]
+  - id: w03-wp4
+    week: 3
+    constructs: [ast.Import, ast.ImportFrom, ast.If]
+    tokens: ["import math", "from math import sqrt", "if __name__ == \"__main__\":"]
+  - id: w04-wp1
+    week: 4
+    constructs: [ast.ListComp, ast.Compare]
+    tokens: ["[v for v in values if v >= 40]", "if v >= 40"]
+  - id: w04-wp2
+    week: 4
+    constructs: [ast.Dict, ast.Call]
+    tokens: ["record.get('status', 'unknown')", ".get("]
+  - id: w04-wp3
+    week: 4
+    constructs: [ast.Assign, ast.Call]
+    tokens: ["line.split(',')", "float(value)", "float(limit)"]
+  - id: w04-wp4
+    week: 4
+    constructs: [ast.FunctionDef, ast.With, ast.For, ast.Dict]
+    tokens: ["with open(path) as f:", "records.append({"]
+  - id: w05-wp1
+    week: 5
+    constructs: [ast.ClassDef, ast.FunctionDef, ast.Attribute]
+    tokens: ["def __init__(self, label, value, limit):", "self.limit = limit"]
+  - id: w05-wp2
+    week: 5
+    constructs: [ast.ClassDef, ast.FunctionDef, ast.If, ast.Return]
+    tokens: ["self.percent()", "'OVER LIMIT'", "'WARNING'", "'OK'"]
+  - id: w05-wp3
+    week: 5
+    constructs: [ast.ClassDef, ast.List, ast.For, ast.Call]
+    tokens: ["for record in records:", "record.status()"]
+  - id: w05-wp4
+    week: 5
+    constructs: [ast.ClassDef, ast.FunctionDef, ast.AugAssign, ast.Attribute]
+    tokens: ["Checker.over_limit_count += 1", "over_limit_count = 0"]
+  - id: w06-wp1
+    week: 6
+    constructs: [ast.Import, ast.Subscript, ast.Call, ast.BinOp]
+    tokens: ["readings['count'].astype(float)", "(readings['count'] / readings['limit']) * 100"]
+  - id: w06-wp2
+    week: 6
+    constructs: [ast.Import, ast.Subscript, ast.Compare]
+    tokens: ["servers['percent'] >= 100", "servers[over]"]
+  - id: w06-wp3
+    week: 6
+    constructs: [ast.Call, ast.Subscript]
+    tokens: ["servers.groupby(\"region\")", "grouped[\"percent\"].mean()", "sort_values(\"percent\", ascending=False)"]
+  - id: w06-wp4
+    week: 6
+    constructs: [ast.Import, ast.FunctionDef, ast.Call, ast.Subscript]
+    tokens: ["servers['percent'].apply(classify)", ".apply("]
+  - id: w07-wp1
+    week: 7
+    constructs: [ast.Assign, ast.Call]
+    tokens: ["raw.strip().lower()", ".strip()"]
+  - id: w07-wp2
+    week: 7
+    constructs: [ast.Compare, ast.Call, ast.If]
+    tokens: ["\"error\" in line.lower()", "line.find(\"ERROR\")", "l.startswith(\"ERROR\")"]
+  - id: w07-wp3
+    week: 7
+    constructs: [ast.Assign, ast.Call]
+    tokens: ["record.split(',', 1)", "hostname, rest"]
+  - id: w07-wp4
+    week: 7
+    constructs: [ast.Assign, ast.Call]
+    tokens: ["line.split(',', 1)", "hostname_part.strip().lower()"]
+  - id: w08-wp1
+    week: 8
+    constructs: [ast.Import, ast.Assign, ast.Call, ast.Subscript]
+    tokens: ["json.loads(raw_json)", "data[\"login\"]"]
+  - id: w08-wp2
+    week: 8
+    constructs: [ast.Assign, ast.Call]
+    tokens: ["data.get('repo_count', 'unknown')", ".get("]
+  - id: w08-wp3
+    week: 8
+    constructs: [ast.Import, ast.ImportFrom, ast.Call]
+    tokens: ["pd.read_csv(StringIO(csv_text))", "StringIO(csv_text)"]
+  - id: w08-wp4
+    week: 8
+    constructs: [ast.Import, ast.Assign, ast.Call]
+    tokens: ["re.sub(r'\\d+\\.\\d+\\.\\d+\\.\\d+', '[REDACTED]', text)", "re.sub("]
+  - id: w09-wp1
+    week: 9
+    constructs: [ast.Import, ast.Call, ast.Compare]
+    tokens: ["hashlib.sha256(typed.encode())", ".hexdigest() == stored_hash"]
+  - id: w09-wp2
+    week: 9
+    constructs: [ast.Import, ast.DictComp, ast.Compare]
+    tokens: ["hashlib.sha256(p.encode()).hexdigest()", "stolen in table"]
+  - id: w09-wp3
+    week: 9
+    constructs: [ast.Import, ast.Call]
+    tokens: ["hashlib.pbkdf2_hmac(\"sha256\",", "secrets.token_bytes(16)", "hmac.compare_digest("]
+  - id: w09-wp4
+    week: 9
+    constructs: [ast.FunctionDef, ast.If, ast.Raise, ast.Call]
+    tokens: ["line.strip().split(',', 1)", "os.environ.get(name)", "raise RuntimeError"]
+  - id: w10-wp1
+    week: 10
+    constructs: [ast.Import, ast.With, ast.Call]
+    tokens: ["sqlite3.connect(\":memory:\")", "CREATE TABLE IF NOT EXISTS devices"]
+  - id: w10-wp2
+    week: 10
+    constructs: [ast.Import, ast.Tuple, ast.Call]
+    tokens: ["(name,)", "conn.execute(sql, params).fetchall()"]
+  - id: w10-wp3
+    week: 10
+    constructs: [ast.Import, ast.With, ast.Call]
+    tokens: ["UPDATE devices SET active = ? WHERE name = ?", "DELETE FROM devices WHERE name = ?"]
+  - id: w10-wp4
+    week: 10
+    constructs: [ast.Import, ast.Call, ast.Tuple]
+    tokens: ["WHERE name = ?", "(hostile_name,)"]
+  - id: w11-wp1
+    week: 11
+    constructs: [ast.FunctionDef, ast.If, ast.Compare, ast.Subscript, ast.AugAssign]
+    tokens: ["'scans' not in state", "state['scans'] = 0", "state['scans'] += 1"]
+  - id: w11-wp2
+    week: 11
+    constructs: [ast.Assign, ast.BinOp, ast.Call]
+    tokens: ["['all'] + sorted(set(regions))", "sorted("]
+  - id: w11-wp3
+    week: 11
+    constructs: [ast.FunctionDef, ast.If, ast.Call, ast.Return]
+    tokens: ["state[\"logged_in\"] = True", "state.get(\"logged_in\", False)", "return \"Please log in.\""]
+  - id: w11-wp4
+    week: 11
+    constructs: [ast.Import, ast.FunctionDef, ast.If, ast.Call]
+    tokens: ["if \"fleet\" not in state:", "state[\"fleet\"] =", "os.environ.get(\"OPS_API_KEY\", \"\")"]
+  - id: w12-wp1
+    week: 12
+    constructs: [ast.Import, ast.FunctionDef, ast.If, ast.Return]
+    tokens: ["os.environ.get(\"OPENAI_API_KEY\")", "if api_key is None:", "return None"]
+  - id: w12-wp2
+    week: 12
+    constructs: [ast.FunctionDef, ast.Call, ast.Dict]
+    tokens: ["history.append({'role': 'assistant', 'content': reply})", "'assistant'"]
+  - id: w12-wp3
+    week: 12
+    constructs: [ast.FunctionDef, ast.If, ast.Assert, ast.Compare]
+    tokens: ["if n >= limit:", "def test_status_boundaries():", "assert status_of(100) == 'OVER LIMIT'"]
+  - id: w12-wp4
+    week: 12
+    constructs: [ast.Import, ast.FunctionDef, ast.BoolOp, ast.Call]
+    tokens: ["os.path.join(project_dir, \"requirements.txt\")", "os.path.exists(path)"]
+  - id: w13-wp1
+    week: 13
+    constructs: [ast.ImportFrom, ast.Assign, ast.Attribute, ast.Call]
+    tokens: ["Path('/var/log/ops/srv-07.log')", "p.stem", "p.suffix"]
+  - id: w13-wp2
+    week: 13
+    constructs: [ast.Import, ast.Call, ast.Attribute]
+    tokens: ["type=int", "action='store_true'", "parser.parse_args("]
+  - id: w13-wp3
+    week: 13
+    constructs: [ast.FunctionDef, ast.ListComp, ast.For, ast.Return]
+    tokens: ["1 if over else 0", "ALERT:"]
+  - id: w13-wp4
+    week: 13
+    constructs: [ast.Import, ast.ImportFrom, ast.FunctionDef, ast.For]
+    tokens: ["parser.parse_args(argv)", "return 1 if alerts > 0 else 0"]
+  - id: w14-wp1
+    week: 14
+    constructs: [ast.FunctionDef, ast.If, ast.Return, ast.Call]
+    tokens: ["raw is None", "float(raw.rstrip('%'))"]
+  - id: w14-wp2
+    week: 14
+    constructs: [ast.ImportFrom, ast.ClassDef, ast.AnnAssign, ast.Call]
+    tokens: ["field(default_factory=list)", "@dataclass"]
+  - id: w14-wp3
+    week: 14
+    constructs: [ast.ImportFrom, ast.ClassDef, ast.FunctionDef, ast.If, ast.Raise]
+    tokens: ["def __post_init__(self):", "self.limit_gb <= 0", "raise ValueError"]
+  - id: w14-wp4
+    week: 14
+    constructs: [ast.For, ast.If, ast.Compare, ast.Call, ast.AugAssign]
+    tokens: ["0 <= pct <= 100", "clean.append((host, pct))", "errors += 1"]
+  - id: w15-wp1
+    week: 15
+    constructs: [ast.AsyncFunctionDef, ast.Dict, ast.IfExp, ast.Compare, ast.If, ast.Raise, ast.Assert]
+    tokens: ["record['percent'] >= 100", "'OVER LIMIT'", "'OK'"]
+  - id: w15-wp2
+    week: 15
+    constructs: [ast.FunctionDef, ast.ListComp, ast.If, ast.Return]
+    tokens: ["r['percent'] >= min_pct", "region is not None"]
+  - id: w15-wp3
+    week: 15
+    constructs: [ast.AsyncFunctionDef, ast.ClassDef, ast.If, ast.Raise, ast.Assert]
+    tokens: ["raise HTTPException(status_code=422", "status_code=201", "async def create_reading"]
+  - id: w15-wp4
+    week: 15
+    constructs: [ast.Import, ast.FunctionDef, ast.With, ast.Return]
+    tokens: ["sqlite3.connect(\":memory:\")", "INSERT OR REPLACE INTO readings"]
+  - id: w16-wp1
+    week: 16
+    constructs: [ast.Import, ast.AsyncFunctionDef, ast.Await, ast.Call]
+    tokens: ["await fetch_status('srv-01')", "asyncio.run("]
+  - id: w16-wp2
+    week: 16
+    constructs: [ast.Import, ast.AsyncFunctionDef, ast.Await, ast.Call]
+    tokens: ["await asyncio.gather(", "fetch_pct("]
+  - id: w16-wp3
+    week: 16
+    constructs: [ast.Import, ast.AsyncFunctionDef, ast.Await, ast.ListComp]
+    tokens: ["asyncio.gather(", "return_exceptions=True", "isinstance("]
+  - id: w16-wp4
+    week: 16
+    constructs: [ast.Import, ast.AsyncFunctionDef, ast.AsyncWith, ast.Await]
+    tokens: ["async with sem:", "asyncio.Semaphore(2)"]
+  - id: w17-wp1
+    week: 17
+    constructs: [ast.FunctionDef, ast.For, ast.If, ast.Yield]
+    tokens: ["yield host", "if pct >= limit:"]
+  - id: w17-wp2
+    week: 17
+    constructs: [ast.FunctionDef, ast.GeneratorExp, ast.Call]
+    tokens: ["sum(1 for ", "max("]
+  - id: w17-wp3
+    week: 17
+    constructs: [ast.Import, ast.FunctionDef, ast.While, ast.Yield, ast.Call]
+    tokens: ["itertools.islice(", "list("]
+  - id: w17-wp4
+    week: 17
+    constructs: [ast.Import, ast.FunctionDef, ast.For, ast.If, ast.Yield]
+    tokens: ["json.loads(line)", "yield row['host']"]
+  - id: w18-wp1
+    week: 18
+    constructs: [ast.Import, ast.FunctionDef, ast.Return, ast.Call]
+    tokens: ["@functools.wraps(func)", "min(", "100.0)"]
+  - id: w18-wp2
+    week: 18
+    constructs: [ast.Import, ast.FunctionDef, ast.For, ast.Try, ast.Raise]
+    tokens: ["@functools.wraps(func)", "for ", "except ConnectionError"]
+  - id: w18-wp3
+    week: 18
+    constructs: [ast.ImportFrom, ast.FunctionDef, ast.Try, ast.Yield, ast.Call]
+    tokens: ["try:", "yield hostname", "finally:", "locks.remove(hostname)"]
+  - id: w18-wp4
+    week: 18
+    constructs: [ast.ImportFrom, ast.FunctionDef, ast.AugAssign, ast.Return]
+    tokens: ["@lru_cache", "raw.strip().lower()"]
+  - id: w19-wp1
+    week: 19
+    constructs: [ast.Import, ast.FunctionDef, ast.Call]
+    tokens: ["log.setLevel(logging.WARNING)", "logging.Formatter("]
+  - id: w19-wp2
+    week: 19
+    constructs: [ast.Import, ast.FunctionDef, ast.DictComp, ast.IfExp, ast.Call]
+    tokens: ["'[REDACTED]' if k in SENSITIVE else v", "json.dumps("]
+  - id: w19-wp3
+    week: 19
+    constructs: [ast.ImportFrom, ast.FunctionDef, ast.Try, ast.Call]
+    tokens: ["trace_id.set(", "trace_id.get()", "trace_id.reset("]
+  - id: w19-wp4
+    week: 19
+    constructs: [ast.Import, ast.ClassDef, ast.FunctionDef, ast.Try, ast.Yield]
+    tokens: ["time.perf_counter()", "self.timings_ms.append("]
+  - id: w20-wp1
+    week: 20
+    constructs: [ast.Import, ast.FunctionDef, ast.While, ast.Call]
+    tokens: ["while not q.empty():", "q.get()", "q.task_done()"]
+  - id: w20-wp2
+    week: 20
+    constructs: [ast.Import, ast.FunctionDef, ast.Call, ast.Compare]
+    tokens: ["INSERT OR IGNORE INTO processed_jobs", "cur.rowcount == 1"]
+  - id: w20-wp3
+    week: 20
+    constructs: [ast.FunctionDef, ast.For, ast.If, ast.Compare, ast.Call]
+    tokens: ["attempts >= max_attempts", "dlq.append(", "retry_q.append("]
+  - id: w20-wp4
+    week: 20
+    constructs: [ast.FunctionDef, ast.BinOp, ast.Call, ast.Return]
+    tokens: ["2 ** (attempt - 1)", "min(cap,"]
+  - id: w21-wp1
+    week: 21
+    constructs: [ast.Import, ast.FunctionDef, ast.Call]
+    tokens: ["CREATE INDEX", "ON alerts(region)", "EXPLAIN QUERY PLAN"]
+  - id: w21-wp2
+    week: 21
+    constructs: [ast.Import, ast.FunctionDef, ast.Try, ast.With, ast.Call]
+    tokens: ["with conn:", "except sqlite3.IntegrityError:"]
+  - id: w21-wp3
+    week: 21
+    constructs: [ast.Import, ast.FunctionDef, ast.Call, ast.Return]
+    tokens: ["LEFT JOIN incidents", "COUNT(i.host_name)", "GROUP BY h.name"]
+  - id: w21-wp4
+    week: 21
+    constructs: [ast.Import, ast.ClassDef, ast.FunctionDef, ast.If]
+    tokens: ["time.monotonic()", "current >= expires_at"]
+  - id: w22-wp1
+    week: 22
+    constructs: [ast.Import, ast.FunctionDef, ast.If, ast.Call]
+    tokens: ["header.removeprefix('Bearer ')", "hmac.compare_digest("]
+  - id: w22-wp2
+    week: 22
+    constructs: [ast.Import, ast.FunctionDef, ast.If, ast.Compare, ast.Call]
+    tokens: ["hmac.compare_digest(", "max_skew"]
+  - id: w22-wp3
+    week: 22
+    constructs: [ast.ClassDef, ast.FunctionDef, ast.Assign, ast.BinOp, ast.If]
+    tokens: ["class TokenBucketLimiter:", "def allow(self, client_id: str, now: float) -> bool:", "self.buckets", "elapsed"]
+  - id: w22-wp4
+    week: 22
+    constructs: [ast.ImportFrom, ast.FunctionDef, ast.Call, ast.Return]
+    tokens: ["Path(base).resolve()", ".is_relative_to(root)"]
+  - id: w23-wp1
+    week: 23
+    constructs: [ast.FunctionDef, ast.Return, ast.Call, ast.Tuple]
+    tokens: ["test_one(make_store())", "test_two(make_store())"]
+  - id: w23-wp2
+    week: 23
+    constructs: [ast.FunctionDef, ast.Try, ast.ExceptHandler, ast.Return]
+    tokens: ["try:", "except ValueError:", "return False"]
+  - id: w23-wp3
+    week: 23
+    constructs: [ast.ClassDef, ast.FunctionDef, ast.If, ast.Raise, ast.Subscript]
+    tokens: ["class FakeStore:", "raise ValueError", "self.rows[host] = pct", "self.rows.get(host)"]
+  - id: w23-wp4
+    week: 23
+    constructs: [ast.FunctionDef, ast.For, ast.Assert, ast.Call]
+    tokens: ["format_record(host, pct)", "parse_record(wire)", "round(pct, 2)"]
+  - id: w24-wp1
+    week: 24
+    constructs: [ast.ImportFrom, ast.ClassDef, ast.FunctionDef, ast.ListComp, ast.Call]
+    tokens: ["sorted(", "r.pct >= threshold"]
+  - id: w24-wp2
+    week: 24
+    constructs: [ast.Import, ast.FunctionDef, ast.Call, ast.Subscript, ast.Tuple]
+    tokens: ["tomllib.loads(", "['project']", "['scripts']"]
+  - id: w24-wp3
+    week: 24
+    constructs: [ast.FunctionDef, ast.If, ast.Compare, ast.Raise, ast.Return]
+    tokens: ["1 <= port <= 65535", "raise ValueError"]
+  - id: w24-wp4
+    week: 24
+    constructs: [ast.Import, ast.ClassDef, ast.FunctionDef, ast.With, ast.For]
+    tokens: ["SELECT status, COUNT(*) FROM records GROUP BY status", "json.dumps(summary, sort_keys=True)"]
+
+traps:
+  - id: w01-trap-wp2-1-190-10-evaluates
+    week: 1
+    waypoint: w01-wp2
+    kind: misconception
+    text: "`\"190\" + \"10\"` evaluates to `\"19010\"`, not `200`. No error is raised when both sides are strings."
+    tested_by:
+      - {type: py_exercise, id: w01-cast-before-math}
+      - {type: predict_output, id: w04-predict-fstring-cast}
+    orphan: false
+  - id: w01-trap-wp2-2-190-10-raises
+    week: 1
+    waypoint: w01-wp2
+    kind: runtime_error
+    text: "`\"190\" + 10` raises `TypeError`. Convert the string with `int()` or `float()` first."
+    tested_by:
+      - {type: py_exercise, id: w01-cast-before-math}
+      - {type: predict_output, id: w04-predict-fstring-cast}
+    orphan: false
+  - id: w01-trap-wp2-3-int-87-5
+    week: 1
+    waypoint: w01-wp2
+    kind: runtime_error
+    text: "`int(\"87.5\")` raises `ValueError`. Parse decimal strings with `float(\"87.5\")` first, then convert to `int()` if you want truncation."
+    tested_by:
+      - {type: py_exercise, id: w01-cast-before-math}
+      - {type: predict_output, id: w04-predict-fstring-cast}
+    orphan: false
+  - id: w01-trap-wp2-4-quotes-around-variable
+    week: 1
+    waypoint: w01-wp2
+    kind: misconception
+    text: "Quotes around a variable name (`print(\"hostname\")`) print the literal word `hostname` instead of the value stored in it."
+    tested_by:
+      - {type: py_exercise, id: w01-cast-before-math}
+      - {type: predict_output, id: w04-predict-fstring-cast}
+    orphan: false
+  - id: w01-trap-wp4-1-omitting-leading-f
+    week: 1
+    waypoint: w01-wp4
+    kind: misconception
+    text: "Omitting the leading `f` before the quote prints the literal characters `{hostname}` instead of the variable's value."
+    tested_by:
+      - {type: py_exercise, id: w01-fstring-report}
+      - {type: predict_output, id: w04-predict-fstring-cast}
+    orphan: false
+  - id: w01-trap-wp4-2-using-exponentiation-2
+    week: 1
+    waypoint: w01-wp4
+    kind: misconception
+    text: "Using `^` for exponentiation (`2 ^ 3`) performs bitwise XOR (`1`), not powers. Use `**`."
+    tested_by:
+      - {type: py_exercise, id: w01-fstring-report}
+      - {type: predict_output, id: w04-predict-fstring-cast}
+    orphan: false
+  - id: w01-trap-wp4-3-dividing-zero-used
+    week: 1
+    waypoint: w01-wp4
+    kind: runtime_error
+    text: "Dividing by zero (`used / 0`) immediately halts the script with `ZeroDivisionError`."
+    tested_by:
+      - {type: py_exercise, id: w01-fstring-report}
+      - {type: predict_output, id: w04-predict-fstring-cast}
+    orphan: false
+  - id: w02-trap-wp2-1-if-x-5
+    week: 2
+    waypoint: w02-wp2
+    kind: syntax_error
+    text: "`if x = 5:` is a `SyntaxError`. `=` stores, `==` asks. Same for `while count = 5:`."
+    tested_by:
+      - {type: py_exercise, id: w02-elif-order}
+      - {type: predict_output, id: w05-predict-elif-shadow}
+    orphan: false
+  - id: w02-trap-wp2-2-every-if-elif
+    week: 2
+    waypoint: w02-wp2
+    kind: syntax_error
+    text: "Every `if`, `elif`, and `else` line ends with a colon. Missing it is a `SyntaxError`, not a warning."
+    tested_by:
+      - {type: py_exercise, id: w02-elif-order}
+      - {type: predict_output, id: w05-predict-elif-shadow}
+    orphan: false
+  - id: w02-trap-wp2-3-line-after-colon
+    week: 2
+    waypoint: w02-wp2
+    kind: syntax_error
+    text: "The line after the colon must be indented four spaces. Python will not guess what you meant, it stops with `IndentationError`."
+    tested_by:
+      - {type: py_exercise, id: w02-elif-order}
+      - {type: predict_output, id: w05-predict-elif-shadow}
+    orphan: false
+  - id: w02-trap-wp2-4-broad-condition-above
+    week: 2
+    waypoint: w02-wp2
+    kind: misconception
+    text: "A broad condition above a specific one runs the wrong branch and tells you nothing. Reorder the chain, do not add another `if`."
+    tested_by:
+      - {type: py_exercise, id: w02-elif-order}
+      - {type: predict_output, id: w05-predict-elif-shadow}
+    orphan: false
+  - id: w02-trap-wp2-5-20-20-false
+    week: 2
+    waypoint: w02-wp2
+    kind: misconception
+    text: "`\"20\" == 20` is `False`. Cast before you compare anything that came out of a file or a form."
+    tested_by:
+      - {type: py_exercise, id: w02-elif-order}
+      - {type: predict_output, id: w05-predict-elif-shadow}
+    orphan: false
+  - id: w02-trap-wp3-1-forget-update-what
+    week: 2
+    waypoint: w02-wp3
+    kind: misconception
+    text: "Forget to update what the condition checks and you get an infinite loop with no error at all."
+    tested_by:
+      - {type: predict_output, id: w04-predict-while-continue}
+    orphan: false
+  - id: w02-trap-wp3-2-every-while-true
+    week: 2
+    waypoint: w02-wp3
+    kind: misconception
+    text: "Every `while True:` needs a `break` it can actually reach. A `break` in a branch that never fires is the same as no break."
+    tested_by:
+      - {type: predict_output, id: w04-predict-while-continue}
+    orphan: false
+  - id: w02-trap-wp3-3-assigning-i-inside
+    week: 2
+    waypoint: w02-wp3
+    kind: misconception
+    text: "Assigning `i` inside a `for` loop does nothing to the count. `range()` decided every value before the first pass."
+    tested_by:
+      - {type: predict_output, id: w04-predict-while-continue}
+    orphan: false
+  - id: w03-trap-wp2-1-required-parameter-after
+    week: 3
+    waypoint: w03-wp2
+    kind: syntax_error
+    text: "A required parameter after a default one is a `SyntaxError`. Defaults go last in the `def` line."
+    tested_by:
+      - {type: py_exercise, id: w03-default-warning}
+    orphan: false
+  - id: w03-trap-wp2-2-positional-argument-after
+    week: 3
+    waypoint: w03-wp2
+    kind: syntax_error
+    text: "A positional argument after a keyword one is a `SyntaxError`. Positional first, keyword after."
+    tested_by:
+      - {type: py_exercise, id: w03-default-warning}
+    orphan: false
+  - id: w03-trap-wp2-3-three-more-parameters
+    week: 3
+    waypoint: w03-wp2
+    kind: misconception
+    text: "With three or more parameters, position is a memory test. Name them and the call site documents itself."
+    tested_by:
+      - {type: py_exercise, id: w03-default-warning}
+    orphan: false
+  - id: w03-trap-wp2-4-args-arrives-one
+    week: 3
+    waypoint: w03-wp2
+    kind: misconception
+    text: "`*args` arrives as one tuple, not separate variables. Index into it or loop over it."
+    tested_by:
+      - {type: py_exercise, id: w03-default-warning}
+    orphan: false
+  - id: w03-trap-wp2-5-passing-too-few
+    week: 3
+    waypoint: w03-wp2
+    kind: runtime_error
+    text: "Passing too few arguments raises `TypeError: missing ... required positional argument`. Read the `def` line, not the call."
+    tested_by:
+      - {type: py_exercise, id: w03-default-warning}
+    orphan: false
+  - id: w03-trap-wp4-1-import-maths-raises
+    week: 3
+    waypoint: w03-wp4
+    kind: runtime_error
+    text: "`import maths` raises `ModuleNotFoundError`. The module is `math`, no `s`."
+    tested_by:
+      - {type: predict_output, id: w05-predict-import-shadow}
+    orphan: false
+  - id: w03-trap-wp4-2-calling-sqrt-16
+    week: 3
+    waypoint: w03-wp4
+    kind: runtime_error
+    text: "Calling `sqrt(16)` after a plain `import math` raises `NameError`. Either `math.sqrt(16)` or `from math import sqrt`."
+    tested_by:
+      - {type: predict_output, id: w05-predict-import-shadow}
+    orphan: false
+  - id: w03-trap-wp4-3-import-can-overwrite
+    week: 3
+    waypoint: w03-wp4
+    kind: misconception
+    text: "A `from` import can overwrite a variable of yours with the same name, silently."
+    tested_by:
+      - {type: predict_output, id: w05-predict-import-shadow}
+    orphan: false
+  - id: w03-trap-wp4-4-test-code-at
+    week: 3
+    waypoint: w03-wp4
+    kind: misconception
+    text: "Test code at the top level runs on every import. Put it behind the guard, or the next engineer gets your debug output in their logs."
+    tested_by:
+      - {type: predict_output, id: w05-predict-import-shadow}
+    orphan: false
+  - id: w03-trap-wp4-5-modulenotfounderror-real-package
+    week: 3
+    waypoint: w03-wp4
+    kind: runtime_error
+    text: "`ModuleNotFoundError` for a real package means it is not installed. `pip install` it, then import."
+    tested_by:
+      - {type: predict_output, id: w05-predict-import-shadow}
+    orphan: false
+  - id: w04-trap-wp2-1-record-missing-keyerror
+    week: 4
+    waypoint: w04-wp2
+    kind: runtime_error
+    text: "`record[\"missing\"]` is a `KeyError`. `.get()` or an `in` check first, always."
+    tested_by:
+      - {type: py_exercise, id: w04-dict-get-default}
+      - {type: predict_output, id: w07-predict-dict-iteration}
+    orphan: false
+  - id: w04-trap-wp2-2-record-value-instead
+    week: 4
+    waypoint: w04-wp2
+    kind: runtime_error
+    text: "`record[value]` instead of `record[\"value\"]` is a `NameError`. Keys are usually strings, so quote them."
+    tested_by:
+      - {type: py_exercise, id: w04-dict-get-default}
+      - {type: predict_output, id: w07-predict-dict-iteration}
+    orphan: false
+  - id: w04-trap-wp2-3-value-record-gives
+    week: 4
+    waypoint: w04-wp2
+    kind: misconception
+    text: "`for value in record:` gives you the keys, not the values. Use `.items()` when you need both."
+    tested_by:
+      - {type: py_exercise, id: w04-dict-get-default}
+      - {type: predict_output, id: w07-predict-dict-iteration}
+    orphan: false
+  - id: w04-trap-wp2-4-empty-dict-empty
+    week: 4
+    waypoint: w04-wp2
+    kind: misconception
+    text: "`{}` is an empty dict. An empty set is `set()`. This matters the moment you call `.add()`."
+    tested_by:
+      - {type: py_exercise, id: w04-dict-get-default}
+      - {type: predict_output, id: w07-predict-dict-iteration}
+    orphan: false
+  - id: w04-trap-wp2-5-zipping-two-lists
+    week: 4
+    waypoint: w04-wp2
+    kind: misconception
+    text: "Zipping two lists of different lengths silently truncates. Check lengths before you trust the result."
+    tested_by:
+      - {type: py_exercise, id: w04-dict-get-default}
+      - {type: predict_output, id: w07-predict-dict-iteration}
+    orphan: false
+  - id: w04-trap-wp3-1-missing-file-filenotfounderror
+    week: 4
+    waypoint: w04-wp3
+    kind: runtime_error
+    text: "A missing file is `FileNotFoundError`, and it will take the whole run down if nothing catches it."
+    tested_by:
+      - {type: py_exercise, id: w04-split-fields}
+    orphan: false
+  - id: w04-trap-wp3-2-forgetting-strip-leaves
+    week: 4
+    waypoint: w04-wp3
+    kind: misconception
+    text: "Forgetting `.strip()` leaves a `\\n` on the last field, so `\"100\"` never equals `\"100\\n\"`."
+    tested_by:
+      - {type: py_exercise, id: w04-split-fields}
+    orphan: false
+  - id: w04-trap-wp3-3-w-overwrites-open
+    week: 4
+    waypoint: w04-wp3
+    kind: misconception
+    text: "`\"w\"` overwrites on open, before your first write. `\"a\"` appends."
+    tested_by:
+      - {type: py_exercise, id: w04-split-fields}
+    orphan: false
+  - id: w04-trap-wp3-4-everything-split-text
+    week: 4
+    waypoint: w04-wp3
+    kind: runtime_error
+    text: "Everything from `.split()` is text. `value + 1` raises `TypeError` until you cast it."
+    tested_by:
+      - {type: py_exercise, id: w04-split-fields}
+    orphan: false
+  - id: w04-trap-wp3-5-catch-wrong-exception
+    week: 4
+    waypoint: w04-wp3
+    kind: misconception
+    text: "Catch the wrong exception and the program still crashes. The last line of the traceback names what you should be catching."
+    tested_by:
+      - {type: py_exercise, id: w04-split-fields}
+    orphan: false
+  - id: w04-trap-wp3-6-catch-do-nothing
+    week: 4
+    waypoint: w04-wp3
+    kind: misconception
+    text: "Catch it and do nothing, and the data is silently missing. Print something."
+    tested_by:
+      - {type: py_exercise, id: w04-split-fields}
+    orphan: false
+  - id: w05-trap-wp2-1-forget-self-init
+    week: 5
+    waypoint: w05-wp2
+    kind: runtime_error
+    text: "Forget `self` in `__init__` and every call raises `TypeError: __init__() takes 1 positional argument but 2 were given`."
+    tested_by:
+      - {type: py_exercise, id: w05-method-status}
+    orphan: false
+  - id: w05-trap-wp2-2-write-value-value
+    week: 5
+    waypoint: w05-wp2
+    kind: misconception
+    text: "Write `value = value` instead of `self.value = value` and the object stores nothing. The name on the left of the dot is the attribute."
+    tested_by:
+      - {type: py_exercise, id: w05-method-status}
+    orphan: false
+  - id: w05-trap-wp2-3-call-status-object
+    week: 5
+    waypoint: w05-wp2
+    kind: runtime_error
+    text: "Call `status()` without the object and you get a `NameError`. Methods belong to an instance: `r.status()`."
+    tested_by:
+      - {type: py_exercise, id: w05-method-status}
+    orphan: false
+  - id: w05-trap-wp2-4-record-label-attributeerror
+    week: 5
+    waypoint: w05-wp2
+    kind: runtime_error
+    text: "`Record.label` is an `AttributeError`. Attributes live on the object, not the blueprint."
+    tested_by:
+      - {type: py_exercise, id: w05-method-status}
+    orphan: false
+  - id: w05-trap-wp2-5-method-s-return
+    week: 5
+    waypoint: w05-wp2
+    kind: misconception
+    text: "A method's return updates nothing by itself. Either reassign the result or set `self.something` and know which one you meant."
+    tested_by:
+      - {type: py_exercise, id: w05-method-status}
+    orphan: false
+  - id: w05-trap-wp4-1-self-over-limit
+    week: 5
+    waypoint: w05-wp4
+    kind: misconception
+    text: "`self.over_limit_count += 1` inside a method reads the shared value, then writes a per-instance copy. The class attribute never moves."
+    tested_by:
+      - {type: py_exercise, id: w05-class-counter}
+      - {type: predict_output, id: w08-predict-class-counter}
+    orphan: false
+  - id: w05-trap-wp4-2-building-record-arguments
+    week: 5
+    waypoint: w05-wp4
+    kind: misconception
+    text: "Building a `Record` with the arguments in the wrong order puts values on the wrong attributes and raises nothing. Match the `__init__` signature, or pass keywords."
+    tested_by:
+      - {type: py_exercise, id: w05-class-counter}
+      - {type: predict_output, id: w08-predict-class-counter}
+    orphan: false
+  - id: w05-trap-wp4-3-load-records-forgets
+    week: 5
+    waypoint: w05-wp4
+    kind: misconception
+    text: "`load_records` that forgets `return` gives you `None`, and the crash happens three lines later in whatever tried to loop over it."
+    tested_by:
+      - {type: py_exercise, id: w05-class-counter}
+      - {type: predict_output, id: w08-predict-class-counter}
+    orphan: false
+  - id: w05-trap-wp4-4-records-label-typeerror
+    week: 5
+    waypoint: w05-wp4
+    kind: runtime_error
+    text: "`records[\"label\"]` is a `TypeError`. A list of objects is not a dict."
+    tested_by:
+      - {type: py_exercise, id: w05-class-counter}
+      - {type: predict_output, id: w08-predict-class-counter}
+    orphan: false
+  - id: w06-trap-wp2-1-between-two-comparisons
+    week: 6
+    waypoint: w06-wp2
+    kind: runtime_error
+    text: "`and`/`or` between two comparisons raises `ValueError: The truth value of a Series is ambiguous`. Use `&` and `|`."
+    tested_by:
+      - {type: py_exercise, id: w06-filter-percent}
+      - {type: predict_output, id: w09-predict-loc-vs-iloc}
+    orphan: false
+  - id: w06-trap-wp2-2-brackets-decoration-write
+    week: 6
+    waypoint: w06-wp2
+    kind: misconception
+    text: "Brackets are not decoration. Write `(a) & (b)`, not `a & b`."
+    tested_by:
+      - {type: py_exercise, id: w06-filter-percent}
+      - {type: predict_output, id: w09-predict-loc-vs-iloc}
+    orphan: false
+  - id: w06-trap-wp2-3-servers-region-east
+    week: 6
+    waypoint: w06-wp2
+    kind: runtime_error
+    text: "`servers[\"region\" == \"east\"]` puts the comparison inside the column brackets and raises `KeyError`. The mask belongs outside: `servers[servers[\"region\"] == \"east\"]`."
+    tested_by:
+      - {type: py_exercise, id: w06-filter-percent}
+      - {type: predict_output, id: w09-predict-loc-vs-iloc}
+    orphan: false
+  - id: w06-trap-wp2-4-filtered-rows-keep
+    week: 6
+    waypoint: w06-wp2
+    kind: runtime_error
+    text: "Filtered rows keep their original labels. `.loc[0]` raises `KeyError` if row 0 was filtered away. Use `.iloc[0]` when you mean the first remaining row."
+    tested_by:
+      - {type: py_exercise, id: w06-filter-percent}
+      - {type: predict_output, id: w09-predict-loc-vs-iloc}
+    orphan: false
+  - id: w06-trap-wp3-1-groupby-no-aggregation
+    week: 6
+    waypoint: w06-wp3
+    kind: misconception
+    text: "A groupby with no aggregation is not a result. No `.mean()`, no numbers."
+    tested_by:
+      - {type: predict_output, id: w08-predict-groupby-mean}
+    orphan: false
+  - id: w06-trap-wp3-2-typo-mixed-case
+    week: 6
+    waypoint: w06-wp3
+    kind: misconception
+    text: "A typo or mixed case in the grouping column quietly produces extra groups. Check `.unique()` first."
+    tested_by:
+      - {type: predict_output, id: w08-predict-groupby-mean}
+    orphan: false
+  - id: w06-trap-wp3-3-largest-first-needs
+    week: 6
+    waypoint: w06-wp3
+    kind: misconception
+    text: "Largest-first needs `ascending=False`. Nothing errors if you forget it, you just read the table backwards."
+    tested_by:
+      - {type: predict_output, id: w08-predict-groupby-mean}
+    orphan: false
+  - id: w06-trap-wp3-4-old-index-travels
+    week: 6
+    waypoint: w06-wp3
+    kind: misconception
+    text: "The old index travels with the sorted rows. Add `.reset_index(drop=True)` when you want fresh numbering."
+    tested_by:
+      - {type: predict_output, id: w08-predict-groupby-mean}
+    orphan: false
+  - id: w07-trap-wp2-1-find-returns-number
+    week: 7
+    waypoint: w07-wp2
+    kind: misconception
+    text: "`.find()` returns a number, so `line.find(x) == True` is never true. Use `in` for yes/no and `.find()` for position."
+    tested_by:
+      - {type: predict_output, id: w09-predict-find-truthy}
+    orphan: false
+  - id: w07-trap-wp2-2-1-truthy-always
+    week: 7
+    waypoint: w07-wp2
+    kind: misconception
+    text: "`-1` is truthy. Always compare explicitly: `if line.find(x) != -1:`."
+    tested_by:
+      - {type: predict_output, id: w09-predict-find-truthy}
+    orphan: false
+  - id: w07-trap-wp2-3-replace-case-sensitive
+    week: 7
+    waypoint: w07-wp2
+    kind: misconception
+    text: "`.replace()` and `in` are case-sensitive. `.lower()` first if the case should not matter."
+    tested_by:
+      - {type: predict_output, id: w09-predict-find-truthy}
+    orphan: false
+  - id: w07-trap-wp2-4-startswith-needs-exact
+    week: 7
+    waypoint: w07-wp2
+    kind: misconception
+    text: "`.startswith()` needs the exact prefix at position 0. If the text merely contains it, you wanted `in`."
+    tested_by:
+      - {type: predict_output, id: w09-predict-find-truthy}
+    orphan: false
+  - id: w07-trap-wp4-1-assuming-every-line
+    week: 7
+    waypoint: w07-wp4
+    kind: misconception
+    text: "Assuming every line is well-formed guarantees a 2 AM surprise. Test the three failures before they happen live."
+    tested_by:
+      - {type: py_exercise, id: w07-pipeline-first-steps}
+      - {type: predict_output, id: w10-predict-maxsplit-clean}
+    orphan: false
+  - id: w07-trap-wp4-2-clean-before-convert
+    week: 7
+    waypoint: w07-wp4
+    kind: runtime_error
+    text: "Clean before you convert. Calling `.strip()` on a float raises `AttributeError`, because numbers have no string methods."
+    tested_by:
+      - {type: py_exercise, id: w07-pipeline-first-steps}
+      - {type: predict_output, id: w10-predict-maxsplit-clean}
+    orphan: false
+  - id: w07-trap-wp4-3-three-line-chain
+    week: 7
+    waypoint: w07-wp4
+    kind: misconception
+    text: "A three-line chain is unreadable when it breaks. Keep the pipeline as named steps, as above."
+    tested_by:
+      - {type: py_exercise, id: w07-pipeline-first-steps}
+      - {type: predict_output, id: w10-predict-maxsplit-clean}
+    orphan: false
+  - id: w07-trap-wp4-4-repeating-over-limit
+    week: 7
+    waypoint: w07-wp4
+    kind: misconception
+    text: "Repeating the OVER LIMIT / WARNING / OK check inline for every line means the same logic typed twice, and eventually two versions that disagree. Write `status_of(...)` once."
+    tested_by:
+      - {type: py_exercise, id: w07-pipeline-first-steps}
+      - {type: predict_output, id: w10-predict-maxsplit-clean}
+    orphan: false
+  - id: w08-trap-wp2-1-no-timeout-means
+    week: 8
+    waypoint: w08-wp2
+    kind: misconception
+    text: "No `timeout=` means an indefinite hang. Always set one."
+    tested_by:
+      - {type: py_exercise, id: w08-get-fallback}
+    orphan: false
+  - id: w08-trap-wp2-2-response-login-raises
+    week: 8
+    waypoint: w08-wp2
+    kind: runtime_error
+    text: "`response[\"login\"]` raises `TypeError: 'Response' object is not subscriptable`. Call `.json()` first."
+    tested_by:
+      - {type: py_exercise, id: w08-get-fallback}
+    orphan: false
+  - id: w08-trap-wp2-3-key-json-raises
+    week: 8
+    waypoint: w08-wp2
+    kind: runtime_error
+    text: "A key that is not in the JSON raises `KeyError`. Print the whole dict once and read the real field names, then use `.get(key, default)` only for genuinely optional fields."
+    tested_by:
+      - {type: py_exercise, id: w08-get-fallback}
+    orphan: false
+  - id: w08-trap-wp2-4-building-query-string
+    week: 8
+    waypoint: w08-wp2
+    kind: misconception
+    text: "Building the query string by hand works often enough to be dangerous. Let `requests` do it."
+    tested_by:
+      - {type: py_exercise, id: w08-get-fallback}
+    orphan: false
+  - id: w08-trap-wp3-1-using-blob-url
+    week: 8
+    waypoint: w08-wp3
+    kind: misconception
+    text: "Using the `blob` URL instead of `raw` gives you HTML, not data."
+    tested_by:
+      - {type: py_exercise, id: w08-stringio-rows}
+    orphan: false
+  - id: w08-trap-wp3-2-passing-response-text
+    week: 8
+    waypoint: w08-wp3
+    kind: runtime_error
+    text: "Passing `response.text` straight to `read_csv` raises `TypeError`. Wrap it in `StringIO`."
+    tested_by:
+      - {type: py_exercise, id: w08-stringio-rows}
+    orphan: false
+  - id: w08-trap-wp3-3-kaggle-one-requests
+    week: 8
+    waypoint: w08-wp3
+    kind: operational
+    text: "Kaggle is not one `requests.get()`. It needs an account, `pip install kaggle`, and a token, then `kaggle datasets download -d owner/name`."
+    tested_by:
+      - {type: py_exercise, id: w08-stringio-rows}
+    orphan: false
+  - id: w08-trap-wp3-4-file-host-own
+    week: 8
+    waypoint: w08-wp3
+    kind: misconception
+    text: "A file you host in your own repo works exactly like the raw GitHub case. Nothing is special about who owns it."
+    tested_by:
+      - {type: py_exercise, id: w08-stringio-rows}
+    orphan: false
+  - id: w09-trap-wp3-1-pbkdf2-nist-approved
+    week: 9
+    waypoint: w09-wp3
+    kind: security
+    text: "**PBKDF2 is the NIST-approved fallback for when you cannot use memory-hard hashing. Modern production systems should use Argon2id (or scrypt), which resist GPU cracking far better than PBKDF2 at comparable CPU cost. We teach PBKDF2 here because it is in the Python standard library and the mechanics are visible; in production, reach for `argon2-cffi` (or `bcrypt`, which embeds its salt in a 60-character string and silently truncates inputs above 72 bytes).**"
+    tested_by:
+      - {type: predict_output, id: w11-predict-pbkdf2-salt}
+    orphan: false
+  - id: w09-trap-wp3-2-passing-str-instead
+    week: 9
+    waypoint: w09-wp3
+    kind: runtime_error
+    text: "Passing a `str` instead of `bytes` to `pbkdf2_hmac` raises `TypeError`. Encode the password with `.encode(\"utf-8\")` first."
+    tested_by:
+      - {type: predict_output, id: w11-predict-pbkdf2-salt}
+    orphan: false
+  - id: w09-trap-wp3-3-reusing-single-static
+    week: 9
+    waypoint: w09-wp3
+    kind: security
+    text: "Reusing a single static salt across users lets an attacker build one rainbow table for your entire userbase. Call `secrets.token_bytes(16)` per user registration."
+    tested_by:
+      - {type: predict_output, id: w11-predict-pbkdf2-salt}
+    orphan: false
+  - id: w09-trap-wp3-4-comparing-password-digests
+    week: 9
+    waypoint: w09-wp3
+    kind: security
+    text: "Comparing password digests with `==` instead of `hmac.compare_digest()` leaks byte-by-byte timing differences."
+    tested_by:
+      - {type: predict_output, id: w11-predict-pbkdf2-salt}
+    orphan: false
+  - id: w09-trap-wp4-1-split-maxsplit-raises
+    week: 9
+    waypoint: w09-wp4
+    kind: runtime_error
+    text: "`.split(\",\")` without a maxsplit raises `ValueError: too many values to unpack` on a line with an extra comma. Use `.split(\",\", 1)`."
+    tested_by:
+      - {type: py_exercise, id: w09-store-split}
+      - {type: py_exercise, id: w09-env-read}
+      - {type: predict_output, id: w12-predict-register-toctou}
+    orphan: false
+  - id: w09-trap-wp4-2-allowing-duplicate-usernames
+    week: 9
+    waypoint: w09-wp4
+    kind: misconception
+    text: "Allowing duplicate usernames means login silently authenticates against the first record forever. Even with `if username_exists():`, a check-then-act sequence in memory or on flat files has a race condition (TOCTOU) when two requests register the same username concurrently; in production, enforce uniqueness atomically with a database `UNIQUE` constraint (Week 10 / Week 20)."
+    tested_by:
+      - {type: py_exercise, id: w09-store-split}
+      - {type: py_exercise, id: w09-env-read}
+      - {type: predict_output, id: w12-predict-register-toctou}
+    orphan: false
+  - id: w09-trap-wp4-3-returning-false-immediately
+    week: 9
+    waypoint: w09-wp4
+    kind: security
+    text: "Returning `False` immediately before hashing when a username is not found leaks whether the account exists via response latency (timing oracle)."
+    tested_by:
+      - {type: py_exercise, id: w09-store-split}
+      - {type: py_exercise, id: w09-env-read}
+      - {type: predict_output, id: w12-predict-register-toctou}
+    orphan: false
+  - id: w09-trap-wp4-4-printing-password-even
+    week: 9
+    waypoint: w09-wp4
+    kind: security
+    text: "Printing a password, even while debugging, puts it in your terminal history and your logs. Print confirmations, never values."
+    tested_by:
+      - {type: py_exercise, id: w09-store-split}
+      - {type: py_exercise, id: w09-env-read}
+      - {type: predict_output, id: w12-predict-register-toctou}
+    orphan: false
+  - id: w09-trap-wp4-5-gitignore-added-after
+    week: 9
+    waypoint: w09-wp4
+    kind: operational
+    text: "A `.gitignore` added after the file was committed is too late. The file is already tracked; `git rm --cached` is on top of that."
+    tested_by:
+      - {type: py_exercise, id: w09-store-split}
+      - {type: py_exercise, id: w09-env-read}
+      - {type: predict_output, id: w12-predict-register-toctou}
+    orphan: false
+  - id: w09-trap-wp4-6-private-repo-secret
+    week: 9
+    waypoint: w09-wp4
+    kind: security
+    text: "A private repo is not a secret store. Collaborators, forks and future public switches all see it. Treat every repo as if it could become public."
+    tested_by:
+      - {type: py_exercise, id: w09-store-split}
+      - {type: py_exercise, id: w09-env-read}
+      - {type: predict_output, id: w12-predict-register-toctou}
+    orphan: false
+  - id: w10-trap-wp1-1-dropping-if-exists
+    week: 10
+    waypoint: w10-wp1
+    kind: runtime_error
+    text: "Dropping `IF NOT EXISTS`. The second run of your script dies with `sqlite3.OperationalError: table devices already exists`, and you will run it more than once."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp1-2-reading-null-has
+    week: 10
+    waypoint: w10-wp1
+    kind: runtime_error
+    text: "Reading `NOT NULL` as \"has a default\". It means you must supply a value, or the insert raises `IntegrityError`."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp1-3-misspelling-column-create
+    week: 10
+    waypoint: w10-wp1
+    kind: misconception
+    text: "Misspelling a column in the `CREATE`. SQLite does not check that name against anything until an insert or a query mentions it, so the mistake surfaces a long way from its cause."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp1-4-using-type-sqlite
+    week: 10
+    waypoint: w10-wp1
+    kind: misconception
+    text: "Using a type SQLite does not have. It is permissive enough to accept almost anything, which leaves you with a schema that lies about your data. Stick to `INTEGER`, `TEXT`, `REAL`, `BLOB`."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp2-1-1-instead-1
+    week: 10
+    waypoint: w10-wp2
+    kind: misconception
+    text: "`(1)` instead of `(1,)`. You passed a number where a sequence of values was expected, and the binding fails or binds the wrong thing."
+    tested_by:
+      - {type: py_exercise, id: w10-one-item-tuple}
+      - {type: predict_output, id: w14-predict-one-item-tuple}
+    orphan: false
+  - id: w10-trap-wp2-2-remembering-conn-commits
+    week: 10
+    waypoint: w10-wp2
+    kind: runtime_error
+    text: "Remembering that `with conn:` commits or rolls back the transaction on exit, but does not close the connection. If you call `conn.close()` yourself and then use a cursor from that connection, `ProgrammingError: Cannot operate on a closed database` is what you get."
+    tested_by:
+      - {type: py_exercise, id: w10-one-item-tuple}
+      - {type: predict_output, id: w14-predict-one-item-tuple}
+    orphan: false
+  - id: w10-trap-wp2-3-assuming-fetchall-hands
+    week: 10
+    waypoint: w10-wp2
+    kind: misconception
+    text: "Assuming `fetchall()` hands back dictionaries. It hands back tuples. Index by position, or set a `row_factory` if you want names."
+    tested_by:
+      - {type: py_exercise, id: w10-one-item-tuple}
+      - {type: predict_output, id: w14-predict-one-item-tuple}
+    orphan: false
+  - id: w10-trap-wp3-1-writing-set-before
+    week: 10
+    waypoint: w10-wp3
+    kind: misconception
+    text: "Writing the `SET` before the `WHERE`. Write the `WHERE` first, then fill in the change, so it is never missing."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp3-2-delete-devices-sql
+    week: 10
+    waypoint: w10-wp3
+    kind: misconception
+    text: "`DELETE * FROM devices`. That is not SQL. The star belongs to `SELECT`; `DELETE FROM` takes no column list."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp3-3-testing-filter-running
+    week: 10
+    waypoint: w10-wp3
+    kind: misconception
+    text: "Testing a filter by running the statement without it. Run a `SELECT` with the same `WHERE` first and look at the rows you are about to destroy."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp3-4-reusing-same-cursor
+    week: 10
+    waypoint: w10-wp3
+    kind: misconception
+    text: "Reusing the same cursor for a second query while you are still iterating the first result set. Finish reading one before starting the next."
+    tested_by:
+      - {type: predict_output, id: w13-predict-update-where}
+    orphan: false
+  - id: w10-trap-wp4-1-wrapping-placeholder-quotes
+    week: 10
+    waypoint: w10-wp4
+    kind: misconception
+    text: "Wrapping the placeholder in quotes, as in `VALUES ('?')`. That inserts the literal question mark. Placeholders are never quoted."
+    tested_by:
+      - {type: py_exercise, id: w10-parameterise-the-filter}
+      - {type: predict_output, id: w12-predict-sql-placeholder}
+    orphan: false
+  - id: w10-trap-wp4-2-thinking-only-internal
+    week: 10
+    waypoint: w10-wp4
+    kind: misconception
+    text: "Thinking \"it is only an internal tool\". The habit travels to the public tool, and the public tool is where the quotes arrive."
+    tested_by:
+      - {type: py_exercise, id: w10-parameterise-the-filter}
+      - {type: predict_output, id: w12-predict-sql-placeholder}
+    orphan: false
+  - id: w10-trap-wp4-3-waiting-error-tell
+    week: 10
+    waypoint: w10-wp4
+    kind: security
+    text: "Waiting for an error to tell you something went wrong. Injection does not raise. It returns the wrong rows, quietly, and you ship it."
+    tested_by:
+      - {type: py_exercise, id: w10-parameterise-the-filter}
+      - {type: predict_output, id: w12-predict-sql-placeholder}
+    orphan: false
+  - id: w11-trap-wp1-1-using-plain-variable
+    week: 11
+    waypoint: w11-wp1
+    kind: misconception
+    text: "Using a plain variable for anything that must outlive a click. It is recreated at the top of every rerun, so your counter resets to zero and looks broken."
+    tested_by:
+      - {type: py_exercise, id: w11-session-state-counter}
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp1-2-assuming-only-clicked
+    week: 11
+    waypoint: w11-wp1
+    kind: misconception
+    text: "Assuming only the clicked widget's code runs again. The whole file runs, every time, including the slow parts."
+    tested_by:
+      - {type: py_exercise, id: w11-session-state-counter}
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp1-3-forgetting-if-key
+    week: 11
+    waypoint: w11-wp1
+    kind: runtime_error
+    text: "Forgetting the `if 'scans' not in state` guard before the first assignment. The first run overwrites the counter, and every earlier scan disappears."
+    tested_by:
+      - {type: py_exercise, id: w11-session-state-counter}
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp2-1-hard-coding-options
+    week: 11
+    waypoint: w11-wp2
+    kind: misconception
+    text: "Hard-coding the options. The inventory gains a `firewall` row, the dropdown never offers it, and the page quietly lies."
+    tested_by:
+      - {type: py_exercise, id: w11-options-from-data}
+    orphan: false
+  - id: w11-trap-wp2-2-filtering-series-use
+    week: 11
+    waypoint: w11-wp2
+    kind: misconception
+    text: "Filtering the option list with `and`/`or` instead of deriving it from the records. A new region never appears in the dropdown."
+    tested_by:
+      - {type: py_exercise, id: w11-options-from-data}
+    orphan: false
+  - id: w11-trap-wp2-3-calling-st-dataframe
+    week: 11
+    waypoint: w11-wp2
+    kind: misconception
+    text: "Rendering an empty result and saying nothing. A blank page reads as a broken page; print a warning when the filter matches no rows."
+    tested_by:
+      - {type: py_exercise, id: w11-options-from-data}
+    orphan: false
+  - id: w11-trap-wp3-1-leaving-inputs-outside
+    week: 11
+    waypoint: w11-wp3
+    kind: misconception
+    text: "Reading the username and password inside the render function instead of passing them into `submit_login`. The gate then only sees whatever the last render happened to hold."
+    tested_by:
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp3-2-setting-logged-true
+    week: 11
+    waypoint: w11-wp3
+    kind: misconception
+    text: "Setting `state[\"logged_in\"] = True` but still drawing the login page because the early return sits after the render."
+    tested_by:
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp3-3-checking-login-flag
+    week: 11
+    waypoint: w11-wp3
+    kind: misconception
+    text: "Checking the login flag after you have already drawn the dashboard. The content flashes before the gate, and the flash is the leak."
+    tested_by:
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp3-4-streamlitapiexception-form-submit
+    week: 11
+    waypoint: w11-wp3
+    kind: misconception
+    text: "Mutating `state` while rendering a read-only page section. Render from a copy and hand mutations back through one function, or the next rerun has no idea what changed."
+    tested_by:
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp3-5-remember-week-9
+    week: 11
+    waypoint: w11-wp3
+    kind: security
+    text: "Remember Week 9's hashing rule when deploying your login store: PBKDF2 is our standard-library teaching substitute; in production services, use memory-hard `argon2-cffi` (or `bcrypt`)."
+    tested_by:
+      - {type: predict_output, id: w13-predict-session-rerun}
+    orphan: false
+  - id: w11-trap-wp4-1-committing-secrets-toml
+    week: 11
+    waypoint: w11-wp4
+    kind: security
+    text: "Committing `secrets.toml` or the `.db` file. `.gitignore` has to be in place before the first commit that would include them, not after."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w11-trap-wp4-2-forgetting-requirements-txt
+    week: 11
+    waypoint: w11-wp4
+    kind: operational
+    text: "Forgetting `requirements.txt`. The deployed app fails at startup, and the error mentions a missing module rather than the file you forgot."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w11-trap-wp4-3-two-widgets-same
+    week: 11
+    waypoint: w11-wp4
+    kind: misconception
+    text: "Reloading the fleet on every rerun instead of caching it in `state`. The loader is slow and the page blocks while it runs."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w11-trap-wp4-4-calling-st-set
+    week: 11
+    waypoint: w11-wp4
+    kind: misconception
+    text: "Reading the API key into a module global at import time. A missing key crashes the app before the first render can degrade gracefully."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w12-trap-wp1-1-hard-coding-key
+    week: 12
+    waypoint: w12-wp1
+    kind: misconception
+    text: "Hard-coding a key \"just to test\". It is one commit away from a public repository, and the commit is forever."
+    tested_by:
+      - {type: predict_output, id: w14-predict-optional-key}
+    orphan: false
+  - id: w12-trap-wp1-2-letting-missing-key
+    week: 12
+    waypoint: w12-wp1
+    kind: misconception
+    text: "Letting a missing key take the process down. The alerts, the table, the filters all die because an optional sentence could not be written."
+    tested_by:
+      - {type: predict_output, id: w14-predict-optional-key}
+    orphan: false
+  - id: w12-trap-wp1-3-logging-key-while
+    week: 12
+    waypoint: w12-wp1
+    kind: misconception
+    text: "Logging the key while debugging. It is now in your shell history, your CI log, and eventually someone's screenshot."
+    tested_by:
+      - {type: predict_output, id: w14-predict-optional-key}
+    orphan: false
+  - id: w12-trap-wp1-4-confusing-loud-version
+    week: 12
+    waypoint: w12-wp1
+    kind: misconception
+    text: "Confusing the loud version with the quiet version. `require_key()` raises; `optional_key()` returns `None`. Pick per feature, deliberately."
+    tested_by:
+      - {type: predict_output, id: w14-predict-optional-key}
+    orphan: false
+  - id: w12-trap-wp2-1-forgetting-append-reply
+    week: 12
+    waypoint: w12-wp2
+    kind: misconception
+    text: "Forgetting to append the reply. The next turn has no memory of this one, and the bug looks like a model problem rather than a list problem."
+    tested_by:
+      - {type: py_exercise, id: w12-resend-history}
+      - {type: predict_output, id: w15-predict-resend-history}
+    orphan: false
+  - id: w12-trap-wp2-2-constructing-client-before
+    week: 12
+    waypoint: w12-wp2
+    kind: misconception
+    text: "Constructing the client before checking that a key exists. `openai.OpenAIError: Missing credentials` is a confusing way to learn about ordering."
+    tested_by:
+      - {type: py_exercise, id: w12-resend-history}
+      - {type: predict_output, id: w15-predict-resend-history}
+    orphan: false
+  - id: w12-trap-wp2-3-assuming-calls-free
+    week: 12
+    waypoint: w12-wp2
+    kind: operational
+    text: "Assuming the calls are free. They are metered. Use `gpt-4o-mini` while developing and set a spending limit before you leave it running."
+    tested_by:
+      - {type: py_exercise, id: w12-resend-history}
+      - {type: predict_output, id: w15-predict-resend-history}
+    orphan: false
+  - id: w12-trap-wp3-1-only-testing-happy
+    week: 12
+    waypoint: w12-wp3
+    kind: misconception
+    text: "Only testing the happy path. The bug at exactly 100 ships because every test used 150."
+    tested_by:
+      - {type: py_exercise, id: w12-threshold-edge}
+    orphan: false
+  - id: w12-trap-wp3-2-calling-real-paid
+    week: 12
+    waypoint: w12-wp3
+    kind: misconception
+    text: "Calling the real, paid API inside a test. It is slow, it costs money, and it fails when the network does, which teaches you nothing about your code."
+    tested_by:
+      - {type: py_exercise, id: w12-threshold-edge}
+    orphan: false
+  - id: w12-trap-wp3-3-test-function-no
+    week: 12
+    waypoint: w12-wp3
+    kind: misconception
+    text: "A test function with no `assert`. It passes, it checks nothing, and it counts as coverage."
+    tested_by:
+      - {type: py_exercise, id: w12-threshold-edge}
+    orphan: false
+  - id: w12-trap-wp3-4-one-giant-test
+    week: 12
+    waypoint: w12-wp3
+    kind: misconception
+    text: "One giant test asserting everything. When it fails you get a line number and no idea which behaviour broke."
+    tested_by:
+      - {type: py_exercise, id: w12-threshold-edge}
+    orphan: false
+  - id: w12-trap-wp4-1-committing-db-file
+    week: 12
+    waypoint: w12-wp4
+    kind: security
+    text: "Committing the `.db` file. Real hashed passwords are now in public history. `.gitignore` stops the next commit; it does not remove the last one."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w12-trap-wp4-2-putting-secrets-file
+    week: 12
+    waypoint: w12-wp4
+    kind: security
+    text: "Putting secrets in a file and deploying anyway. The repository is public the moment you connect it."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w12-trap-wp4-3-deploying-fresh-clone
+    week: 12
+    waypoint: w12-wp4
+    kind: operational
+    text: "Deploying without a fresh clone test. Your working directory has files the repository does not, and the cloud has none of them."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w12-trap-wp4-4-assuming-works-my
+    week: 12
+    waypoint: w12-wp4
+    kind: operational
+    text: "Assuming \"it works on my machine\" is a status. It is a description of your machine."
+    tested_by: []
+    orphan: true
+    rationale: "Operational deployment/repository hygiene rule in a non-exercise waypoint outside the frozen Phase 2 warm-up scope."
+  - id: w13-trap-wp2-1-leaving-out-type
+    week: 13
+    waypoint: w13-wp2
+    kind: runtime_error
+    text: "Leaving out `type=float` or `type=int` on numeric flags. `args.warn_at` arrives as the string `\"85\"`, and comparing it against a float raises `TypeError`."
+    tested_by:
+      - {type: py_exercise, id: w13-argparse-flags}
+    orphan: false
+  - id: w13-trap-wp2-2-using-type-bool
+    week: 13
+    waypoint: w13-wp2
+    kind: misconception
+    text: "Using `type=bool` for a flag. `bool(\"False\")` is `True` because any non-empty string is truthy in Python. Use `action=\"store_true\"` instead."
+    tested_by:
+      - {type: py_exercise, id: w13-argparse-flags}
+    orphan: false
+  - id: w13-trap-wp2-3-calling-parser-parse
+    week: 13
+    waypoint: w13-wp2
+    kind: misconception
+    text: "Calling `parser.parse_args()` at module import level. Anyone importing a helper from your script triggers CLI parsing on their own `sys.argv`. Keep it inside `main()`."
+    tested_by:
+      - {type: py_exercise, id: w13-argparse-flags}
+    orphan: false
+  - id: w13-trap-wp3-1-printing-error-banners
+    week: 13
+    waypoint: w13-wp3
+    kind: misconception
+    text: "Printing error banners to `stdout`. The next script in the pipeline tries to parse `\"Error: file missing\"` as a hostname row."
+    tested_by:
+      - {type: py_exercise, id: w13-exit-code-contract}
+    orphan: false
+  - id: w13-trap-wp3-2-returning-true-false
+    week: 13
+    waypoint: w13-wp3
+    kind: misconception
+    text: "Returning `True` or `False` as a shell exit code. In Unix, `0` is success and `1` is failure\u2014the exact opposite of Python's boolean `int(True) == 1`."
+    tested_by:
+      - {type: py_exercise, id: w13-exit-code-contract}
+    orphan: false
+  - id: w13-trap-wp3-3-calling-sys-exit
+    week: 13
+    waypoint: w13-wp3
+    kind: misconception
+    text: "Calling `sys.exit()` deep inside business logic, which makes unit tests terminate unless they catch `SystemExit`. Return an integer from `main()` instead."
+    tested_by:
+      - {type: py_exercise, id: w13-exit-code-contract}
+    orphan: false
+  - id: w14-trap-wp2-1-using-mutable-default
+    week: 14
+    waypoint: w14-wp2
+    kind: runtime_error
+    text: "Using a mutable default like `tags: list[str] = []` on a dataclass field. Python raises `ValueError: mutable default <class 'list'> for field tags is not allowed` to save you from every instance sharing the same list. Use `field(default_factory=list)`."
+    tested_by:
+      - {type: py_exercise, id: w14-default-factory}
+      - {type: predict_output, id: w17-predict-frozen-replace}
+    orphan: false
+  - id: w14-trap-wp2-2-putting-field-default
+    week: 14
+    waypoint: w14-wp2
+    kind: misconception
+    text: "Putting a field without a default after a field with a default. Just like function parameters, defaulted fields must come last."
+    tested_by:
+      - {type: py_exercise, id: w14-default-factory}
+      - {type: predict_output, id: w17-predict-frozen-replace}
+    orphan: false
+  - id: w14-trap-wp2-3-trying-reassign-attribute
+    week: 14
+    waypoint: w14-wp2
+    kind: misconception
+    text: "Trying to reassign an attribute on a `frozen=True` dataclass, which raises `FrozenInstanceError`. Use `dataclasses.replace(obj, used_gb=90.0)` to create an updated copy."
+    tested_by:
+      - {type: py_exercise, id: w14-default-factory}
+      - {type: predict_output, id: w17-predict-frozen-replace}
+    orphan: false
+  - id: w14-trap-wp4-1-letting-raw-dict
+    week: 14
+    waypoint: w14-wp4
+    kind: misconception
+    text: "Letting raw `dict` payloads travel deep into business logic. Validate once at the ingestion boundary and pass typed instances everywhere else."
+    tested_by:
+      - {type: py_exercise, id: w14-quarantine-batch}
+      - {type: predict_output, id: w24-predict-post-init-quarantine}
+    orphan: false
+  - id: w14-trap-wp4-2-catching-exception-silently
+    week: 14
+    waypoint: w14-wp4
+    kind: misconception
+    text: "Catching `Exception` silently during validation and dropping bad records with no counter or log entry. Always count and report quarantined rows."
+    tested_by:
+      - {type: py_exercise, id: w14-quarantine-batch}
+      - {type: predict_output, id: w24-predict-post-init-quarantine}
+    orphan: false
+  - id: w14-trap-wp4-3-mutating-caller-s
+    week: 14
+    waypoint: w14-wp4
+    kind: misconception
+    text: "Mutating the caller's input dictionary inside `from_raw()` with `.pop()`. Read from the dictionary without destroying it in case the error handler needs to log the raw payload."
+    tested_by:
+      - {type: py_exercise, id: w14-quarantine-batch}
+      - {type: predict_output, id: w24-predict-post-init-quarantine}
+    orphan: false
+  - id: w15-trap-wp2-1-using-get-endpoint
+    week: 15
+    waypoint: w15-wp2
+    kind: security
+    text: "Using `GET` for an endpoint that mutates data or triggers an action. Browser pre-fetchers, health checks, and retries will replay `GET` requests freely. Use `POST`, `PUT`, or `DELETE` for state changes."
+    tested_by:
+      - {type: py_exercise, id: w15-query-filter}
+    orphan: false
+  - id: w15-trap-wp2-2-accepting-raw-dict
+    week: 15
+    waypoint: w15-wp2
+    kind: misconception
+    text: "Accepting a raw `dict` as a `POST` body instead of a typed model. You lose automatic validation, type coercion, and `/docs` schema documentation in one stroke."
+    tested_by:
+      - {type: py_exercise, id: w15-query-filter}
+    orphan: false
+  - id: w15-trap-wp2-3-forgetting-query-parameters
+    week: 15
+    waypoint: w15-wp2
+    kind: misconception
+    text: "Forgetting that query parameters without defaults are required. If a filter is optional, give it a default like `region: str | None = None`."
+    tested_by:
+      - {type: py_exercise, id: w15-query-filter}
+    orphan: false
+  - id: w15-trap-wp4-1-hardcoding-sqlite3-connect
+    week: 15
+    waypoint: w15-wp4
+    kind: misconception
+    text: "Hardcoding `sqlite3.connect(\"ops.db\")` inside route functions without a way to override it. Every test run pollutes or deletes your real local database."
+    tested_by:
+      - {type: predict_output, id: w17-predict-endpoint-di}
+    orphan: false
+  - id: w15-trap-wp4-2-returning-internal-python
+    week: 15
+    waypoint: w15-wp4
+    kind: misconception
+    text: "Returning internal Python tracebacks or SQLite error strings in `detail`. Log the full exception server-side and return a safe message to the caller."
+    tested_by:
+      - {type: predict_output, id: w17-predict-endpoint-di}
+    orphan: false
+  - id: w15-trap-wp4-3-forgetting-test-404
+    week: 15
+    waypoint: w15-wp4
+    kind: misconception
+    text: "Forgetting to test `404` and `422` paths alongside `200` and `201`. Error paths are where unhandled exceptions hide."
+    tested_by:
+      - {type: predict_output, id: w17-predict-endpoint-di}
+    orphan: false
+  - id: w16-trap-wp2-1-writing-h-hosts
+    week: 16
+    waypoint: w16-wp2
+    kind: misconception
+    text: "Writing `for h in hosts: await probe(h)` and expecting concurrency. That runs one coroutine at a time. Collect the coroutines and `await asyncio.gather(*tasks)`."
+    tested_by:
+      - {type: py_exercise, id: w16-gather-order}
+    orphan: false
+  - id: w16-trap-wp2-2-calling-time-sleep
+    week: 16
+    waypoint: w16-wp2
+    kind: misconception
+    text: "Calling `time.sleep()` or `requests.get()` inside an `async def` function. Both are synchronous and freeze the entire event loop, starving every other concurrent task. Use `await asyncio.sleep()` and an async HTTP client like `httpx.AsyncClient`."
+    tested_by:
+      - {type: py_exercise, id: w16-gather-order}
+    orphan: false
+  - id: w16-trap-wp2-3-forgetting-await-task
+    week: 16
+    waypoint: w16-wp2
+    kind: misconception
+    text: "Forgetting `await` on a task that mutates state or sends an alert. Python emits `RuntimeWarning: coroutine '...' was never awaited` and the code inside never runs."
+    tested_by:
+      - {type: py_exercise, id: w16-gather-order}
+    orphan: false
+  - id: w16-trap-wp4-1-creating-new-asyncio
+    week: 16
+    waypoint: w16-wp4
+    kind: misconception
+    text: "Creating a new `asyncio.Semaphore(5)` inside the worker function instead of creating one shared semaphore outside and passing it in. Five separate semaphores of size 5 do not limit anything."
+    tested_by:
+      - {type: py_exercise, id: w16-semaphore-peak}
+    orphan: false
+  - id: w16-trap-wp4-2-opening-new-http
+    week: 16
+    waypoint: w16-wp4
+    kind: misconception
+    text: "Opening a new HTTP client session inside every single coroutine (`async with httpx.AsyncClient() as client:` inside `bounded_probe`). Create one shared `AsyncClient` outside `gather` so all requests reuse the same TCP connection pool."
+    tested_by:
+      - {type: py_exercise, id: w16-semaphore-peak}
+    orphan: false
+  - id: w16-trap-wp4-3-using-asyncio-speed
+    week: 16
+    waypoint: w16-wp4
+    kind: misconception
+    text: "Using `asyncio` to speed up heavy CPU math. Event loops overlap *waiting*, not calculation; CPU-bound work belongs in `concurrent.futures.ProcessPoolExecutor`."
+    tested_by:
+      - {type: py_exercise, id: w16-semaphore-peak}
+    orphan: false
+  - id: w17-trap-wp2-1-iterating-over-same
+    week: 17
+    waypoint: w17-wp2
+    kind: misconception
+    text: "Iterating over the same generator object twice. A generator is a one-way stream: once `list(gen)` or `sum(gen)` exhausts it, a second loop over `gen` yields zero items and raises no error."
+    tested_by:
+      - {type: py_exercise, id: w17-exhausted-generator}
+    orphan: false
+  - id: w17-trap-wp2-2-calling-len-gen
+    week: 17
+    waypoint: w17-wp2
+    kind: misconception
+    text: "Calling `len(gen)` or indexing `gen[0]`. Generators do not know their length in advance and do not support indexing; use `sum(1 for _ in gen)` to count items or `next(gen)` to grab the first one."
+    tested_by:
+      - {type: py_exercise, id: w17-exhausted-generator}
+    orphan: false
+  - id: w17-trap-wp2-3-wrapping-generator-inside
+    week: 17
+    waypoint: w17-wp2
+    kind: misconception
+    text: "Wrapping a generator inside `list()` before passing it to `sum()`, `max()`, or `any()`, which throws away the memory savings you just wrote the generator to get."
+    tested_by:
+      - {type: py_exercise, id: w17-exhausted-generator}
+    orphan: false
+  - id: w17-trap-wp4-1-opening-file-inside
+    week: 17
+    waypoint: w17-wp4
+    kind: runtime_error
+    text: "Opening a file inside a helper function, returning a generator expression over `f`, and letting the `with open(...) as f:` block exit before the caller consumes the generator. The file closes immediately and iterating raises `ValueError: I/O operation on closed file`. Put `yield` *inside* the `with open(...)` block so the generator keeps the context manager alive until iteration stops."
+    tested_by:
+      - {type: py_exercise, id: w17-jsonl-generator}
+    orphan: false
+  - id: w17-trap-wp4-2-calling-json-load
+    week: 17
+    waypoint: w17-wp4
+    kind: runtime_error
+    text: "Calling `json.load(f)` on a `.jsonl` file. `json.load()` expects a single top-level JSON document and raises `json.JSONDecodeError: Extra data` on line 2. Loop over `f` and call `json.loads(line)` on each line."
+    tested_by:
+      - {type: py_exercise, id: w17-jsonl-generator}
+    orphan: false
+  - id: w18-trap-wp2-1-forgetting-return-func
+    week: 18
+    waypoint: w18-wp2
+    kind: misconception
+    text: "Forgetting `return func(*args, **kwargs)` inside `wrapper`. Your decorated function runs its side effects and silently returns `None` to every caller."
+    tested_by:
+      - {type: py_exercise, id: w18-retry-counter}
+    orphan: false
+  - id: w18-trap-wp2-2-writing-retry-parentheses
+    week: 18
+    waypoint: w18-wp2
+    kind: runtime_error
+    text: "Writing `@retry` without parentheses when `retry` is a decorator factory expecting `@retry()`. Calling `flaky_ping(\"srv-07\")` then passes `\"srv-07\"` as `func` and crashes with `TypeError`."
+    tested_by:
+      - {type: py_exercise, id: w18-retry-counter}
+    orphan: false
+  - id: w18-trap-wp2-3-retrying-bare-except
+    week: 18
+    waypoint: w18-wp2
+    kind: runtime_error
+    text: "Retrying on bare `except Exception:`. A typo raising `NameError` or a `401 Unauthorized` will never succeed on retry 2 or 3; retry only transient network/IO errors."
+    tested_by:
+      - {type: py_exercise, id: w18-retry-counter}
+    orphan: false
+  - id: w18-trap-wp3-1-omitting-try-finally
+    week: 18
+    waypoint: w18-wp3
+    kind: misconception
+    text: "Omitting `try: ... finally:` around `yield` in a `@contextmanager` function. If the code inside the `with` block raises an exception, Python injects that exception at the `yield` point and any cleanup lines below `yield` never execute unless they are inside `finally:`."
+    tested_by:
+      - {type: py_exercise, id: w18-contextmanager-cleanup}
+      - {type: predict_output, id: w21-predict-contextmanager-finally}
+    orphan: false
+  - id: w18-trap-wp3-2-yielding-more-than
+    week: 18
+    waypoint: w18-wp3
+    kind: runtime_error
+    text: "Yielding more than once inside `@contextmanager`, which raises `RuntimeError: generator didn't stop`. A context manager yields control to the `with` block exactly once."
+    tested_by:
+      - {type: py_exercise, id: w18-contextmanager-cleanup}
+      - {type: predict_output, id: w21-predict-contextmanager-finally}
+    orphan: false
+  - id: w19-trap-wp2-1-logging-sensitive-fields
+    week: 19
+    waypoint: w19-wp2
+    kind: security
+    text: "Logging sensitive fields like `password`, `api_key`, or `Authorization` headers when dumping `**fields` or request dictionaries. Redact secrets before serializing."
+    tested_by:
+      - {type: py_exercise, id: w19-redact-structured-log}
+    orphan: false
+  - id: w19-trap-wp2-2-calling-logger-error
+    week: 19
+    waypoint: w19-wp2
+    kind: misconception
+    text: "Calling `logger.error(f\"Failed: {exc}\")` instead of `logger.exception(\"Failed\")` inside an `except` block. `logger.exception()` attaches the full stack trace automatically; `str(exc)` throws away the line number where the error happened."
+    tested_by:
+      - {type: py_exercise, id: w19-redact-structured-log}
+    orphan: false
+  - id: w19-trap-wp2-3-configuring-logging-basicconfig
+    week: 19
+    waypoint: w19-wp2
+    kind: misconception
+    text: "Configuring `logging.basicConfig()` at the top of a shared library module. Only the application entrypoint should configure handlers and levels."
+    tested_by:
+      - {type: py_exercise, id: w19-redact-structured-log}
+    orphan: false
+  - id: w19-trap-wp4-1-using-time-time
+    week: 19
+    waypoint: w19-wp4
+    kind: misconception
+    text: "Using `time.time()` to measure duration. A clock sync mid-request can produce a negative latency (`-12.4ms`) and corrupt your metrics. Use `time.perf_counter()`."
+    tested_by:
+      - {type: predict_output, id: w21-predict-monotonic-timer}
+    orphan: false
+  - id: w19-trap-wp4-2-unbounded-metric-labels
+    week: 19
+    waypoint: w19-wp4
+    kind: misconception
+    text: "Unbounded metric labels (putting a unique `request_id` or timestamp inside a counter name like `metrics.inc(f\"req_{request_id}\")`). Your dictionary grows forever until the process runs out of memory. Keep counter names to a small fixed vocabulary (`\"db_write.ok\"`, `\"db_write.err\"`) and put high-cardinality IDs in logs."
+    tested_by:
+      - {type: predict_output, id: w21-predict-monotonic-timer}
+    orphan: false
+  - id: w20-trap-wp2-1-checking-if-job
+    week: 20
+    waypoint: w20-wp2
+    kind: misconception
+    text: "Checking if a job was already processed in memory when running multiple worker processes that do not share RAM. In production, store the `idempotency_key` in a shared database table with a `PRIMARY KEY` or `UNIQUE` constraint."
+    tested_by:
+      - {type: py_exercise, id: w20-idempotent-sql}
+      - {type: predict_output, id: w23-predict-idempotent-retry}
+    orphan: false
+  - id: w20-trap-wp2-2-generating-brand-new
+    week: 20
+    waypoint: w20-wp2
+    kind: misconception
+    text: "Generating a brand-new random `job_id` every time a worker retries a failed task. The idempotency key must be deterministic for the event (for example, `f\"{host}:{timestamp_minute}\"`) so retries carry the same key."
+    tested_by:
+      - {type: py_exercise, id: w20-idempotent-sql}
+      - {type: predict_output, id: w23-predict-idempotent-retry}
+    orphan: false
+  - id: w20-trap-wp4-1-unbounded-exponential-backoff
+    week: 20
+    waypoint: w20-wp4
+    kind: misconception
+    text: "Unbounded exponential backoff (`2 ** attempt` without `min(cap, ...)`). By attempt 20, the worker sleeps for twelve days. Always cap the maximum delay."
+    tested_by:
+      - {type: py_exercise, id: w20-capped-backoff}
+    orphan: false
+  - id: w20-trap-wp4-2-enqueueing-huge-payloads
+    week: 20
+    waypoint: w20-wp4
+    kind: misconception
+    text: "Enqueueing huge payloads (like a 20 MB CSV string) directly inside the queue message. Write the large payload to disk or object storage and pass only its file path or database ID in the queue message."
+    tested_by:
+      - {type: py_exercise, id: w20-capped-backoff}
+    orphan: false
+  - id: w20-trap-wp4-3-killing-worker-process
+    week: 20
+    waypoint: w20-wp4
+    kind: misconception
+    text: "Killing a worker process mid-job without a graceful shutdown flag (`running = False`), leaving half-written state behind. Let the worker finish its current item before exiting the loop."
+    tested_by:
+      - {type: py_exercise, id: w20-capped-backoff}
+    orphan: false
+  - id: w21-trap-wp2-1-calling-conn-commit
+    week: 21
+    waypoint: w21-wp2
+    kind: misconception
+    text: "Calling `conn.commit()` manually after every single statement inside a multi-step update. Once committed, a later exception in the block cannot roll back the earlier statement. Let the `with conn:` block commit once at the end."
+    tested_by:
+      - {type: py_exercise, id: w21-atomic-transfer}
+    orphan: false
+  - id: w21-trap-wp2-2-creating-index-every
+    week: 21
+    waypoint: w21-wp2
+    kind: misconception
+    text: "Creating an index on every column \"just in case\". Every index speeds up matching `SELECT` queries but slows down every `INSERT`, `UPDATE`, and `DELETE` because SQLite must update all those index trees on every write. Index the columns you actually filter (`WHERE`), join (`ON`), or sort (`ORDER BY`) by."
+    tested_by:
+      - {type: py_exercise, id: w21-atomic-transfer}
+    orphan: false
+  - id: w21-trap-wp2-3-wrapping-lower-hostname
+    week: 21
+    waypoint: w21-wp2
+    kind: misconception
+    text: "Wrapping `LOWER(hostname) = 'srv-01'` in the `WHERE` clause when the index is on `hostname`. Applying a function to the column prevents a standard column index from being used; normalize strings to lowercase before inserting them."
+    tested_by:
+      - {type: py_exercise, id: w21-atomic-transfer}
+    orphan: false
+  - id: w22-trap-wp2-1-computing-hmac-over
+    week: 22
+    waypoint: w22-wp2
+    kind: misconception
+    text: "Computing the HMAC over `json.dumps(parsed_dict)` instead of the exact raw request bytes. Whitespace or key-ordering differences change the hash and break valid signatures."
+    tested_by:
+      - {type: py_exercise, id: w22-hmac-tamper}
+    orphan: false
+  - id: w22-trap-wp2-2-verifying-hmac-signature
+    week: 22
+    waypoint: w22-wp2
+    kind: security
+    text: "Verifying the HMAC signature without checking the timestamp (`0 <= now - timestamp <= max_skew`), or forgets to deduplicate the signature/event ID in Week 20's idempotency store. An attacker who intercepts one valid signed request can replay that exact request unless you reject stale timestamps and duplicate IDs."
+    tested_by:
+      - {type: py_exercise, id: w22-hmac-tamper}
+    orphan: false
+  - id: w22-trap-wp3-1-storing-one-bucket
+    week: 22
+    waypoint: w22-wp3
+    kind: misconception
+    text: "Storing one bucket per IP in an unbounded `dict` (`self.buckets`). During a spoofed-IP flood, millions of unique keys will exhaust RAM\u2014the exact high-cardinality trap from Week 19. In production, store buckets in Week 21's `TTLCache` (or Redis with `EXPIRE`) so idle IP entries evict automatically."
+    tested_by:
+      - {type: py_exercise, id: w22-fixed-window-limiter}
+    orphan: false
+  - id: w22-trap-wp4-1-using-shell-true
+    week: 22
+    waypoint: w22-wp4
+    kind: security
+    text: "Using `shell=True` in `subprocess.run()` with any string that came from a request, file, or database row. Pass an argument list `[\"cmd\", arg1, arg2]` with `shell=False`."
+    tested_by:
+      - {type: py_exercise, id: w22-path-jail}
+    orphan: false
+  - id: w22-trap-wp4-2-checking-filename-string
+    week: 22
+    waypoint: w22-wp4
+    kind: misconception
+    text: "Checking `\"..\" not in filename` with string replacement instead of `.resolve().is_relative_to(root)`. Symlinks and URL encodings bypass naive string filters; `.resolve()` canonicalizes the real path first."
+    tested_by:
+      - {type: py_exercise, id: w22-path-jail}
+    orphan: false
+  - id: w23-trap-wp2-1-sharing-single-module
+    week: 23
+    waypoint: w23-wp2
+    kind: misconception
+    text: "Sharing a single module-level database or dictionary across tests without resetting it. Test B passes when run after Test A and fails when run alone (`pytest -k test_b`). Every test must set up its own state."
+    tested_by:
+      - {type: py_exercise, id: w23-assert-raises}
+    orphan: false
+  - id: w23-trap-wp2-2-catching-exceptions-try
+    week: 23
+    waypoint: w23-wp2
+    kind: runtime_error
+    text: "Catching exceptions with `try: func() except ValueError: pass` when `func()` did not actually raise. If `func()` silently returns `None` instead of raising `ValueError`, the `try` block finishes normally and the test passes by mistake! Use `pytest.raises(ValueError)` or an explicit `raised = False` flag."
+    tested_by:
+      - {type: py_exercise, id: w23-assert-raises}
+    orphan: false
+  - id: w23-trap-wp4-1-asserting-exact-float
+    week: 23
+    waypoint: w23-wp4
+    kind: misconception
+    text: "Asserting exact float equality (`recovered_pct == pct`) on a lossy wire format like `:.2f`. Because `format_record` rounds `142.336` to `\"142.34\"`, the round-trip test must assert equivalence at the wire format's precision (`round(pct, 2)` or `pytest.approx(pct, abs=0.01)`), otherwise a bug in the test masquerades as a bug in the parser."
+    tested_by:
+      - {type: predict_output, id: w24-predict-roundtrip-precision}
+    orphan: false
+  - id: w24-trap-wp2-1-circular-imports-api
+    week: 24
+    waypoint: w24-wp2
+    kind: misconception
+    text: "Circular imports (`api.py` imports from `storage.py`, and `storage.py` imports from `api.py`). Python raises `ImportError: cannot import name '...' from partially initialized module`. Keep shared data classes in `domain.py` so both `api.py` and `storage.py` import downward from `domain.py`, never sideways from each other."
+    tested_by:
+      - {type: py_exercise, id: w24-entrypoint-parse}
+    orphan: false
+  - id: w24-trap-wp2-2-naming-local-file
+    week: 24
+    waypoint: w24-wp2
+    kind: misconception
+    text: "Naming a local file `logging.py`, `json.py`, `random.py`, or `sqlite3.py`. It shadows the Python standard library module of the same name and breaks every library that tries to import it."
+    tested_by:
+      - {type: py_exercise, id: w24-entrypoint-parse}
+    orphan: false
+  - id: w24-trap-wp2-3-unpinned-dependencies-upper
+    week: 24
+    waypoint: w24-wp2
+    kind: misconception
+    text: "Unpinned dependencies without upper or lower bounds (`pandas` instead of `pandas>=2.0,<3.0`), which lets an overnight major version bump break a fresh deployment."
+    tested_by:
+      - {type: py_exercise, id: w24-entrypoint-parse}
+    orphan: false

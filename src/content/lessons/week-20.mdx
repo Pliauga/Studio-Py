@@ -1,0 +1,138 @@
+---
+id: "week-20-background-queues-and-workers"
+title: "Task Queues and Workers"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+Whenever a host crosses 100% disk, your API now calls an external incident webhook and runs an AI summary pass before returning `201 Created` to the monitoring agent. When the webhook service slows down to four seconds, every agent's `POST` request hangs right behind it. A web handler should store the reading, drop a job onto a **queue**, and reply in 5 milliseconds—leaving a background **worker** to handle the slow delivery, retries, and dead-letter recovery.
+
+## Waypoint 1: Decouple Producers from Consumers
+
+A **producer** creates work (the API route receiving an alert) and pushes a small message onto a **queue**. A **consumer** (the worker) pulls messages off the queue one at a time and executes them at its own pace.
+
+In Python's `queue.Queue` (or `asyncio.Queue`), `.put(job)` enqueues a task and `.get()` pulls the oldest one out in First-In, First-Out (`FIFO`) order. Passing `maxsize=100` applies **backpressure**: if workers fall behind and 100 jobs are already waiting, `.put_nowait()` raises `queue.Full` immediately instead of letting unread jobs eat all available memory.
+
+```python
+import queue
+
+job_queue: queue.Queue[dict] = queue.Queue(maxsize=10)
+
+# Producer
+job_queue.put({"job_id": "j-01", "host": "srv-07", "percent": 104.2})
+job_queue.put({"job_id": "j-02", "host": "srv-09", "percent": 101.0})
+
+# Consumer
+while not job_queue.empty():
+    job = job_queue.get()
+    print(f"Dispatching alert {job['job_id']} for {job['host']}")
+    job_queue.task_done()
+```
+
+<PyExercise id="w20-fifo-queue" initialCode="import queue&#10;&#10;def drain_queue(q: queue.Queue) -&gt; list[str]:&#10;    &quot;&quot;&quot;Pull all items from `q` in FIFO order, mark each task done, and return them as a list.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;q: queue.Queue[str] = queue.Queue()&#10;for host in ['srv-01', 'srv-02', 'srv-03']:&#10;    q.put(host)&#10;print(drain_queue(q))" expectedOutput="['srv-01', 'srv-02', 'srv-03']" />
+
+## Waypoint 2: At-Least-Once Delivery Requires Idempotency
+
+Workers crash, networks drop acknowledgements, and queues retry jobs when a worker times out. That means your worker will eventually receive the **exact same job twice** (at-least-once delivery). If processing `"j-01"` pages the on-call engineer or inserts a billing record, running it twice without protection pages them twice.
+
+An operation is **idempotent** if applying it once and applying it three times produce the exact same state. Enforce idempotency by requiring an `idempotency_key` (or `job_id`) on every task and recording completed keys in a store (or using a `UNIQUE` constraint in SQLite) before executing the side effect.
+
+```python
+class AlertWorker:
+    def __init__(self) -> None:
+        self.completed_ids: set[str] = set()
+        self.sent_pages: list[str] = []
+
+    def process(self, job: dict) -> str:
+        jid = job["job_id"]
+        if jid in self.completed_ids:
+            return "SKIPPED_DUPLICATE"
+        self.sent_pages.append(f"PAGE:{job['host']}")
+        self.completed_ids.add(jid)
+        return "PROCESSED"
+
+worker = AlertWorker()
+job = {"job_id": "inc-99", "host": "srv-07"}
+print(worker.process(job))   # PROCESSED
+print(worker.process(job))   # SKIPPED_DUPLICATE
+print(worker.sent_pages)     # ['PAGE:srv-07'] - only paged once
+```
+
+### Watch out: The Trap
+
+- Checking if a job was already processed in memory when running multiple worker processes that do not share RAM. In production, store the `idempotency_key` in a shared database table with a `PRIMARY KEY` or `UNIQUE` constraint.
+- Generating a brand-new random `job_id` every time a worker retries a failed task. The idempotency key must be deterministic for the event (for example, `f"{host}:{timestamp_minute}"`) so retries carry the same key.
+
+<PredictOutput conceptId="w20-predict-inmemory-idempotency" codeSnippet="class Worker:&#10;    def __init__(self):&#10;        self.completed = set()&#10;&#10;    def process(self, job_id):&#10;        if job_id in self.completed:&#10;            return &quot;SKIPPED&quot;&#10;        self.completed.add(job_id)&#10;        return &quot;PAGED&quot;&#10;&#10;w1, w2 = Worker(), Worker()&#10;print(w1.process(&quot;j-9&quot;), w2.process(&quot;j-9&quot;))" options={['PAGED PAGED', 'PAGED SKIPPED', 'SKIPPED PAGED']} correctIndex={0} rationale="Each `Worker()` owns its own `self.completed` set, so `w2` has never seen `j-9` and pages again. Production workers are separate processes, which is exactly why the dedupe key belongs in a shared store with a `UNIQUE` constraint, not in RAM." />
+
+<PyExercise id="w20-idempotent-sql" initialCode="import sqlite3&#10;&#10;conn = sqlite3.connect(':memory:')&#10;conn.execute('CREATE TABLE processed_jobs (job_id TEXT PRIMARY KEY, host TEXT)')&#10;&#10;def run_job(job_id: str, host: str) -&gt; bool:&#10;    &quot;&quot;&quot;Record (job_id, host) idempotently in processed_jobs; return True on first execution and False on duplicates.&quot;&quot;&quot;&#10;    # TODO&#10;    return False&#10;&#10;print(run_job('j-1', 'srv-01'), run_job('j-1', 'srv-01'))" expectedOutput="True False" />
+
+## Waypoint 3: Poison Pills and the Dead-Letter Queue (DLQ)
+
+What happens when a job in the queue is malformed or triggers a bug every time a worker touches it? If the worker catches the error and puts the job right back at the front of the queue forever, that **poison pill** blocks every healthy job behind it in an infinite retry loop.
+
+Track an `attempts` counter on each message. When `attempts` exceeds `max_attempts` (such as 3), stop retrying and move the message to a **Dead-Letter Queue (DLQ)** alongside the error reason. The worker stays healthy and moves on to the next job, while an operator can inspect and replay the DLQ once the bug is fixed.
+
+```python
+def run_with_dlq(jobs: list[dict], max_attempts: int = 3) -> tuple[list[str], list[dict]]:
+    delivered: list[str] = []
+    dlq: list[dict] = []
+
+    for job in jobs:
+        success = False
+        for attempt in range(1, max_attempts + 1):
+            job["attempts"] = attempt
+            if job.get("host") == "poison-host":
+                continue
+            delivered.append(job["job_id"])
+            success = True
+            break
+        if not success:
+            dlq.append(job)
+
+    return delivered, dlq
+
+jobs = [
+    {"job_id": "j-1", "host": "srv-01"},
+    {"job_id": "j-2", "host": "poison-host"},
+    {"job_id": "j-3", "host": "srv-02"},
+]
+ok, dead = run_with_dlq(jobs)
+print("Delivered:", ok)
+print("DLQ:", [d["job_id"] for d in dead])
+```
+
+<PyExercise id="w20-dlq-routing" initialCode="def route_failures(items: list[dict], max_attempts: int = 3) -&gt; tuple[list[str], list[str]]:&#10;    &quot;&quot;&quot;For invalid items, route ids with attempts &gt;= max_attempts to dlq; otherwise increment attempts and route to retry_q.&quot;&quot;&quot;&#10;    retry_q: list[str] = []&#10;    dlq: list[str] = []&#10;    # TODO&#10;    return retry_q, dlq&#10;&#10;queue_items = [&#10;    &#123;'id': 'j1', 'attempts': 1, 'valid': True&#125;,&#10;    &#123;'id': 'j2', 'attempts': 3, 'valid': False&#125;,&#10;    &#123;'id': 'j3', 'attempts': 1, 'valid': False&#125;,&#10;]&#10;retry_ids, dlq_ids = route_failures(queue_items)&#10;print(retry_ids, dlq_ids)" expectedOutput="['j3'] ['j2']" />
+
+## Waypoint 4: Exponential Backoff with Jitter
+
+When a downstream webhook goes down for five seconds and fifty workers all retry at exact 1.0-second intervals, they slam the recovering server in synchronized waves—a **thundering herd**.
+
+Use **exponential backoff** (`base_delay * (2 ** attempt)`) capped at a maximum wait (`min(max_delay, ...)`), so retries space out (`1s`, `2s`, `4s`, `8s`). Add **jitter** (`random.uniform(0, delay)`) to spread the retry timestamps out across the window so recovering servers are not hit simultaneously.
+
+```python
+import random
+
+def compute_backoff(attempt: int, base: float = 0.5, cap: float = 10.0) -> float:
+    """Return exponential backoff delay in seconds, capped at `cap`."""
+    raw = base * (2 ** (attempt - 1))
+    return min(cap, raw)
+
+for a in range(1, 6):
+    delay = compute_backoff(a, base=1.0, cap=8.0)
+    jittered = round(random.uniform(0.5 * delay, delay), 2)
+    print(f"attempt {a}: max={delay}s, jittered={jittered}s")
+```
+
+### Watch out: The Trap
+
+- Unbounded exponential backoff (`2 ** attempt` without `min(cap, ...)`). By attempt 20, the worker sleeps for twelve days. Always cap the maximum delay.
+- Enqueueing huge payloads (like a 20 MB CSV string) directly inside the queue message. Write the large payload to disk or object storage and pass only its file path or database ID in the queue message.
+- Killing a worker process mid-job without a graceful shutdown flag (`running = False`), leaving half-written state behind. Let the worker finish its current item before exiting the loop.
+
+<PyExercise id="w20-capped-backoff" initialCode="def backoff_seconds(attempt: int, base: float = 1.0, cap: float = 8.0) -&gt; float:&#10;    &quot;&quot;&quot;Return exponential backoff delay for 1-indexed `attempt` starting at `base` and capped at `cap`.&quot;&quot;&quot;&#10;    # TODO&#10;    return base&#10;&#10;print([backoff_seconds(i) for i in range(1, 6)])" expectedOutput="[1.0, 2.0, 4.0, 8.0, 8.0]" />
+
+## The Debrief
+
+Slow and flaky side effects are now off the critical path. Your API enqueues lightweight job messages, workers deduplicate repeats using idempotency keys, poison messages land safely in a dead-letter queue after three tries, and retries back off exponentially instead of stampeding a recovering service. Next week we look inside SQLite and application memory to make slow queries and high-traffic endpoints fast.

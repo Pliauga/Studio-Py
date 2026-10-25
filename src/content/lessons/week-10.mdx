@@ -1,0 +1,143 @@
+---
+id: "week-10-sql-and-databases"
+title: "SQL and Databases"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+The incident log started as a convenience: one line per event, appended by cron, easy to read with `grep`. Tonight it is forty thousand lines, `grep` is returning line numbers instead of answers, and the on-call lead wants the active devices and the unresolved alerts, not a wall of text. A flat file stores characters and hopes you remember the layout. A **database** stores records and enforces the layout for you. The events are moving into `ops.db`, and **SQL** is how you ask it questions.
+
+## Waypoint 1: Write the shape down before the data
+
+The first database job is never reading data. It is declaring what the data is. A **table** is one kind of thing, a **row** is one of them, a **column** is an attribute every row carries, and the **schema** is that shape written once and enforced afterwards. From that point nobody has to remember field order or count commas on a line.
+
+`sqlite3` is in the standard library, so there is nothing to install, and SQLite keeps the whole database in a single file (or in RAM with `":memory:"`). The connection, the cursor and the statement are three separate objects. Entering `with conn:` manages a transaction: it commits automatically on a clean exit and rolls back if the block raises (`with conn:` does not close the connection itself; in short scripts the OS reclaims it on exit, while long-lived services call `conn.close()` explicitly).
+
+```python
+import sqlite3
+
+with sqlite3.connect(":memory:") as conn:
+    cursor = conn.cursor()
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS devices ("
+        "id INTEGER PRIMARY KEY, "
+        "name TEXT NOT NULL, "
+        "ip TEXT NOT NULL, "
+        "active INTEGER NOT NULL)"
+    )
+    print("Table ready")
+```
+
+Read the declaration as a contract. `id INTEGER PRIMARY KEY` gives every row an identity you never have to invent. `TEXT NOT NULL` means the column holds text and the row is rejected if the value is missing. The schema is the thing a plain text file could only imply.
+
+### Watch out: The Trap
+
+- Dropping `IF NOT EXISTS`. The second run of your script dies with `sqlite3.OperationalError: table devices already exists`, and you will run it more than once.
+- Reading `NOT NULL` as "has a default". It means you must supply a value, or the insert raises `IntegrityError`.
+- Misspelling a column in the `CREATE`. SQLite does not check that name against anything until an insert or a query mentions it, so the mistake surfaces a long way from its cause.
+- Using a type SQLite does not have. It is permissive enough to accept almost anything, which leaves you with a schema that lies about your data. Stick to `INTEGER`, `TEXT`, `REAL`, `BLOB`.
+
+## Waypoint 2: Values travel beside the statement
+
+`cursor.execute()` takes two things: the SQL text and, separately, a tuple of values. A **placeholder**, the lone `?`, marks where each value belongs. That separation is the whole design. The statement describes the command; the tuple carries the data.
+
+The result of a query comes back through `fetchall()`, which returns a list of tuples, one per row, in the order you named the columns.
+
+```python
+import sqlite3
+
+with sqlite3.connect(":memory:") as conn:
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE devices (id INTEGER PRIMARY KEY, name TEXT NOT NULL, ip TEXT NOT NULL, active INTEGER NOT NULL)")
+    cursor.execute(
+        "INSERT INTO devices (name, ip, active) VALUES (?, ?, ?)",
+        ("AP-Lobby", "10.0.0.10", 1),
+    )
+    cursor.execute(
+        "SELECT name, ip FROM devices WHERE active = ?",
+        (1,),
+    )
+    rows = cursor.fetchall()
+print(rows)
+```
+
+That prints `[('AP-Lobby', '10.0.0.10')]` once the row is in. A one-item tuple still needs its trailing comma: `(1,)` is a tuple, `(1)` is just the number. The count of `?` and the length of the tuple must match, or `sqlite3.ProgrammingError` tells you so.
+
+### Watch out: The Trap
+
+- `(1)` instead of `(1,)`. You passed a number where a sequence of values was expected, and the binding fails or binds the wrong thing.
+- Remembering that `with conn:` commits or rolls back the transaction on exit, but does not close the connection. If you call `conn.close()` yourself and then use a cursor from that connection, `ProgrammingError: Cannot operate on a closed database` is what you get.
+- Assuming `fetchall()` hands back dictionaries. It hands back tuples. Index by position, or set a `row_factory` if you want names.
+
+<PyExercise id="w10-one-item-tuple" initialCode="import sqlite3&#10;&#10;conn = sqlite3.connect(':memory:')&#10;conn.execute('CREATE TABLE devices (name TEXT, ip TEXT)')&#10;conn.execute('INSERT INTO devices VALUES (?, ?)', ('AP-Lobby', '10.0.0.10'))&#10;&#10;name = 'AP-Lobby'&#10;sql = 'SELECT ip FROM devices WHERE name = ?'&#10;params = (name)  # TODO: pass a one-item tuple so cursor.execute binds the parameter&#10;print(conn.execute(sql, params).fetchall())" expectedOutput="[('10.0.0.10',)]" />
+
+## Waypoint 3: WHERE decides which rows pay
+
+`INSERT` and `SELECT` were half the job. The other half is changing records, and both verbs keep the same Python shape: open the connection, execute a statement with placeholders, let the block commit. Only the SQL verb changes.
+
+`WHERE` is the clause that chooses the rows. With it, the change is targeted at the row you named. Without it, SQLite does exactly what you literally asked and touches every row in the table, then reports success.
+
+```python
+import sqlite3
+
+with sqlite3.connect(":memory:") as conn:
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE devices (name TEXT, active INTEGER)")
+    cursor.executemany("INSERT INTO devices VALUES (?, ?)", [("AP-Lobby", 1), ("Old-Switch", 1)])
+    cursor.execute(
+        "UPDATE devices SET active = ? WHERE name = ?",
+        (0, "AP-Lobby"),
+    )
+    cursor.execute(
+        "DELETE FROM devices WHERE name = ?",
+        ("Old-Switch",),
+    )
+    print(cursor.execute("SELECT name, active FROM devices").fetchall())
+```
+
+`UPDATE devices SET active = 0` with no `WHERE` is legal, silent, and catastrophic: every device goes inactive and nothing tells you it was wrong. This is the mistake that turns a two-minute fix into a restore from backup.
+
+### Watch out: The Trap
+
+- Writing the `SET` before the `WHERE`. Write the `WHERE` first, then fill in the change, so it is never missing.
+- `DELETE * FROM devices`. That is not SQL. The star belongs to `SELECT`; `DELETE FROM` takes no column list.
+- Testing a filter by running the statement without it. Run a `SELECT` with the same `WHERE` first and look at the rows you are about to destroy.
+- Reusing the same cursor for a second query while you are still iterating the first result set. Finish reading one before starting the next.
+
+## Waypoint 4: A quote is not a feature
+
+By now the `?` looks like house style. It is a security control. An f-string puts the user's text **inside** the statement, which means their characters become part of the grammar. If that text is `' OR '1'='1`, the statement stops asking about one user and starts asking about everyone:
+
+```sql
+SELECT * FROM users WHERE username = '' OR '1'='1';
+```
+
+Every row comes back. No exception, no warning, no traceback, because nothing failed. The query did precisely what the assembled text said. The rule that prevents it is short enough to keep: **SQL text stays SQL text, user data stays data.**
+
+```python
+import sqlite3
+
+hostile = "AP-Lobby' OR '1'='1"
+
+with sqlite3.connect(":memory:") as conn:
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE devices (name TEXT, ip TEXT)")
+    cursor.execute("INSERT INTO devices VALUES ('AP-Lobby', '10.0.0.10')")
+    cursor.execute("SELECT name FROM devices WHERE name = ?", (hostile,))
+    print(cursor.fetchall())  # empty - the quote never became SQL
+```
+
+The placeholder hands the value to SQLite as a value. SQLite never parses it as a command, so a quote in a hostname is just a quote in a hostname.
+
+### Watch out: The Trap
+
+- Wrapping the placeholder in quotes, as in `VALUES ('?')`. That inserts the literal question mark. Placeholders are never quoted.
+- Thinking "it is only an internal tool". The habit travels to the public tool, and the public tool is where the quotes arrive.
+- Waiting for an error to tell you something went wrong. Injection does not raise. It returns the wrong rows, quietly, and you ship it.
+
+<PyExercise id="w10-parameterise-the-filter" initialCode="import sqlite3&#10;&#10;conn = sqlite3.connect(':memory:')&#10;conn.execute('CREATE TABLE devices (name TEXT, ip TEXT)')&#10;conn.executemany('INSERT INTO devices VALUES (?, ?)', [('AP-Lobby', '10.0.0.10'), ('Core-Router', '10.0.0.1')])&#10;&#10;hostile_name = &quot;AP-Lobby' OR '1'='1&quot;&#10;# TODO: use a '?' placeholder and pass (hostile_name,) so injection returns [] instead of all rows&#10;rows = conn.execute(f&quot;SELECT ip FROM devices WHERE name = '&#123;hostile_name&#125;'&quot;).fetchall()&#10;print(rows)" expectedOutput="[]" />
+
+## The Debrief
+
+`ops.db` now holds the devices, the insert path is one placeholder tuple, and the destructive verbs have a `WHERE` clause you wrote before the `SET`. The log is not a pile of text any more; it is a table you can ask questions of, and the answers arrive as rows. Tonight the on-call lead gets the list without opening a text editor. Tomorrow that list needs a page anyone can open without a terminal, which is the problem Week 11 solves.

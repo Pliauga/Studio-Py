@@ -1,0 +1,161 @@
+---
+id: "week-09-hashing-and-auth"
+title: "Hashing and Authentication"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+The console has users now, which means it has a password file, which means the file is worth stealing. Someone will eventually copy `users.txt` off a laptop or out of a repo, and what is in it decides whether the incident is a bad night or a breach report. Tonight you make that file useless to whoever takes it.
+
+## Waypoint 1: One Way, By Design
+
+A **hash** takes any input and returns a fixed-size fingerprint. Same input, same output, every single time, and no function turns it back into the original. That last property is the whole point: a password only ever needs checking, never recovering.
+
+Change one character and the **avalanche effect** gives you an entirely different fingerprint. There is no such thing as a close match to hunt for.
+
+**Encryption is the wrong tool.** It is two-way by definition, so whoever holds the key can reverse it, and now you have a key to lose as well as a password file. Verification with a hash means hashing the attempt again and comparing the two fingerprints.
+
+```python
+import hashlib
+
+print(hashlib.sha256(b"password123").hexdigest())
+print(hashlib.sha256(b"password123").hexdigest())   # identical, every time
+print(hashlib.sha256(b"password124").hexdigest())   # one character, entirely new hash
+
+typed = "password123"
+stored_hash = hashlib.sha256(b"password123").hexdigest()
+print(hashlib.sha256(typed.encode()).hexdigest() == stored_hash)
+```
+
+<PyExercise id="w09-hash-verify" initialCode="import hashlib&#10;typed = 'password123'&#10;stored_hash = hashlib.sha256(b'password123').hexdigest()&#10;match = hashlib.sha256(typed)  # TODO: hash the bytes, not the str&#10;print(match.hexdigest() == stored_hash)" expectedOutput="True" />
+
+## Waypoint 2: Why a Plain Hash Loses
+
+A stolen hash is not the end of the story, because an attacker can pre-compute. Hash the million most common passwords once, keep the results in a lookup table, and a stolen hash becomes a dictionary lookup. That table is a **rainbow table**, and no amount of "clever" password choice saves you if the password is common enough to be in it.
+
+A **salt** kills the table. Generate a unique random value per user, mix it into the hash, and store it alongside. The same password now hashes differently for every user, so a pre-computed table matches nobody.
+
+```python
+import hashlib
+
+common = ["123456", "password", "qwerty"]
+table = {hashlib.sha256(p.encode()).hexdigest(): p for p in common}
+
+stolen = hashlib.sha256(b"qwerty").hexdigest()
+print(stolen in table)   # True - cracked instantly, no salt
+```
+
+## Waypoint 3: Slow by Design: Salted Key Derivation
+
+Fast hashes like SHA-256 are built to verify gigabytes of files per second, which also lets an attacker with a GPU test billions of candidate passwords per second. Password hashing must be **deliberately slow**.
+
+In Python's standard library, `hashlib.pbkdf2_hmac("sha256", password_bytes, salt_bytes, iterations)` applies HMAC-SHA256 hundreds of thousands of times in a tight loop (`600_000` iterations is the OWASP baseline). Generate a fresh 16-byte random salt per user with `secrets.token_bytes(16)`, derive the digest, and verify logins in constant time with `hmac.compare_digest()`. Never decrypt anything, because there is nothing to decrypt.
+
+```python
+import hashlib
+import hmac
+import secrets
+
+password = "correct-horse-battery-staple"
+salt = secrets.token_bytes(16)
+iterations = 600_000
+
+derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+print(len(salt.hex()), len(derived.hex()))   # 32 hex chars (16B salt), 64 hex chars (32B hash)
+
+candidate_ok = hashlib.pbkdf2_hmac("sha256", b"correct-horse-battery-staple", salt, iterations)
+candidate_bad = hashlib.pbkdf2_hmac("sha256", b"wrong-password", salt, iterations)
+print(hmac.compare_digest(candidate_ok, derived))    # True
+print(hmac.compare_digest(candidate_bad, derived))   # False
+```
+
+### Watch out: The Trap
+
+- **PBKDF2 is the NIST-approved fallback for when you cannot use memory-hard hashing. Modern production systems should use Argon2id (or scrypt), which resist GPU cracking far better than PBKDF2 at comparable CPU cost. We teach PBKDF2 here because it is in the Python standard library and the mechanics are visible; in production, reach for `argon2-cffi` (or `bcrypt`, which embeds its salt in a 60-character string and silently truncates inputs above 72 bytes).**
+- Passing a `str` instead of `bytes` to `pbkdf2_hmac` raises `TypeError`. Encode the password with `.encode("utf-8")` first.
+- Reusing a single static salt across users lets an attacker build one rainbow table for your entire userbase. Call `secrets.token_bytes(16)` per user registration.
+- Comparing password digests with `==` instead of `hmac.compare_digest()` leaks byte-by-byte timing differences.
+
+## Waypoint 4: The Perimeter
+
+Registering checks `username_exists()` first, generates a random salt, derives the hash, and appends `username,salt_hex$hash_hex` to the store. Logging in looks up the user, re-derives the hash using the stored salt, and checks it with `hmac.compare_digest()`. Both use Week 7's `.split(",", 1)`, because a `maxsplit` of 1 keeps the credential field intact.
+
+Crucially, if a username does *not* exist, a naive `login_user()` returns `False` in microseconds without running the slow hash—creating a **timing oracle** that tells an attacker which usernames are valid. Always run `pbkdf2_hmac` against a pre-generated `DUMMY_SALT` and `DUMMY_HASH` even when the user is missing so every login attempt takes the exact same CPU time.
+
+Hashing protects passwords. Everything else is protected by **keeping it out of the code**. A hard-coded key is compromised the moment it is pushed, and deleting it in a later commit does not remove it from history. Read it from the environment, and raise loudly when a required variable is missing.
+
+```python
+import hashlib
+import hmac
+import os
+import secrets
+
+# OWASP 2023+ recommendation for PBKDF2-HMAC-SHA256; raise as hardware improves.
+ITERATIONS = 600_000
+DUMMY_SALT = secrets.token_bytes(16)
+DUMMY_HASH = hashlib.pbkdf2_hmac("sha256", b"__dummy__", DUMMY_SALT, ITERATIONS)
+
+def username_exists(username, store):
+    """Return True if the username already has a record."""
+    return username in store
+
+def register_user(username, password, store):
+    """Register a new user with a unique salt and PBKDF2 digest."""
+    if username_exists(username, store):
+        raise ValueError(f"User '{username}' already exists")
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, ITERATIONS)
+    store[username] = f"{salt.hex()}${digest.hex()}"
+
+def login_user(username, password, store):
+    """Return True if the password matches, executing in constant time even if user is missing."""
+    record = store.get(username)
+    if record is not None:
+        salt_hex, hash_hex = record.split("$", 1)
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(hash_hex)
+    else:
+        salt = DUMMY_SALT
+        expected = DUMMY_HASH
+    computed = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, ITERATIONS)
+    matched = hmac.compare_digest(computed, expected)
+    return matched and (record is not None)
+
+users_db = {}
+register_user("alice", "s3cr3t-pass", users_db)
+print(login_user("alice", "s3cr3t-pass", users_db))   # True
+print(login_user("alice", "wrong-pass", users_db))    # False
+print(login_user("ghost", "s3cr3t-pass", users_db))   # False (still ran PBKDF2)
+```
+
+```python
+import os
+
+api_key = os.environ.get("OPS_API_KEY", "")
+print("OPS_API_KEY loaded:", len(api_key), "chars")
+
+def require_env(name):
+    """Return the variable, or fail loudly if it is missing."""
+    value = os.environ.get(name)
+    if value is None:
+        raise RuntimeError(f"{name} is not set. Set it before running this.")
+    return value
+```
+
+### Watch out: The Trap
+
+- `.split(",")` without a maxsplit raises `ValueError: too many values to unpack` on a line with an extra comma. Use `.split(",", 1)`.
+- Allowing duplicate usernames means login silently authenticates against the first record forever. Even with `if username_exists():`, a check-then-act sequence in memory or on flat files has a race condition (TOCTOU) when two requests register the same username concurrently; in production, enforce uniqueness atomically with a database `UNIQUE` constraint (Week 10 / Week 20).
+- Returning `False` immediately before hashing when a username is not found leaks whether the account exists via response latency (timing oracle).
+- Printing a password, even while debugging, puts it in your terminal history and your logs. Print confirmations, never values.
+- A `.gitignore` added after the file was committed is too late. The file is already tracked; `git rm --cached` is on top of that.
+- A private repo is not a secret store. Collaborators, forks and future public switches all see it. Treat every repo as if it could become public.
+
+<PyExercise id="w09-store-split" initialCode="line = 'alice,9f8e7d6c5b4a39281726354453627180$4a1b2c3d4e5f60718293a4b5c6d7e8f9'&#10;username, stored_cred = line.strip()  # TODO: split on the first comma only&#10;print(username, '$' in stored_cred)" expectedOutput="alice True" />
+
+<PyExercise id="w09-env-read" initialCode="import os&#10;&#10;def require_env(name: str) -&gt; str:&#10;    value = os.environ.get(name)&#10;    # TODO: raise RuntimeError if value is None or empty&#10;    return value or 'not set'&#10;&#10;os.environ['OPS_API_KEY'] = 'live_key_99'&#10;api_key = require_env('OPS_API_KEY')&#10;print('OPS_API_KEY loaded:', len(api_key), 'chars')&#10;os.environ.pop('OPS_API_KEY', None)&#10;try:&#10;    require_env('OPS_API_KEY')&#10;    print('accepted')&#10;except RuntimeError:&#10;    print('rejected')" expectedOutput="OPS_API_KEY loaded: 11 chars&#10;rejected" />
+
+## The Debrief
+
+The password store now holds random salts and slow derived digests that mean nothing without the candidate password, missing usernames still pay the full hashing cost so timing reveals nothing, and the key that protects the rest is required from the environment rather than defaulted in code. Register, login, refuse duplicates, fail closed when secrets are missing. Next week the incident records move into SQLite, where queries replace scans.

@@ -1,0 +1,139 @@
+---
+id: "week-03-functions-and-modules"
+title: "Functions and Modules"
+estimatedMinutes: 18
+---
+
+## The Hook
+
+It is 4 AM and you are pasting the same disk check into a third script. Next month someone moves the threshold and two of the three copies keep the old number, quietly. You need to define the check once, name it, and call it from anywhere. Then you need to put it in a file the rest of the platform can import.
+
+## Waypoint 1: Define Once, Call Anywhere
+
+`def` creates a function. Calling it runs the function. Defining alone does nothing, and calling without the brackets hands you the function object instead of a result.
+
+A **parameter** lets you pass something in. `return` sends a value back out. `print` only shows it: the caller gets nothing, and any value you meant to keep is thrown away. That distinction is the whole reason functions compose.
+
+A string on the first line inside the function is a **docstring**. Python keeps it, `help()` shows it, and the next engineer reads it before guessing what the arguments mean.
+
+```python
+def greet_record(record_id):
+    print(f"Checking {record_id}")
+
+def add_tax(price):
+    """Return price with 20% tax added."""
+    return price * 1.2
+
+greet_record("srv-01")
+greet_record("srv-02")
+
+total = add_tax(100)
+print(total)
+```
+
+<PyExercise id="w03-return-not-print" initialCode="def add_tax(price):&#10;    # TODO: return the total, do not print it&#10;    print(price * 1.2)&#10;&#10;total = add_tax(100)&#10;print(total)" expectedOutput="120.0" />
+
+## Waypoint 2: Defaults and Named Arguments
+
+Positional arguments are matched to parameters by order, so `within_limit(100, 87)` asks a completely different question from `within_limit(87, 100)`. That is fine with two parameters and a liability with four.
+
+A **default value** is a fallback written on the `def` line. Callers can leave it out, or override it. **Keyword arguments** name the parameter at the call site, which kills the ordering problem: `status_of(percent=95, warning_at=90)` says what it means even if you read it a week later.
+
+Positional first, keyword after. Once you name one, everything after it must be named too. And when the count genuinely is unknown, `*args` collects extra positional arguments into a tuple and `**kwargs` collects extra keyword arguments into a dict.
+
+```python
+def status_of(percent, warning_at=90):
+    if percent >= 100:
+        return "OVER LIMIT"
+    elif percent >= warning_at:
+        return "WARNING"
+    return "OK"
+
+print(status_of(95))                          # default, 90
+print(status_of(95, 96))                      # overridden
+print(status_of(warning_at=90, percent=95))   # reordered, same answer
+
+def total(*numbers):
+    return sum(numbers)
+
+print(total(10, 20, 30, 40))
+```
+
+### Watch out: The Trap
+
+- A required parameter after a default one is a `SyntaxError`. Defaults go last in the `def` line.
+- A positional argument after a keyword one is a `SyntaxError`. Positional first, keyword after.
+- With three or more parameters, position is a memory test. Name them and the call site documents itself.
+- `*args` arrives as one tuple, not separate variables. Index into it or loop over it.
+- Passing too few arguments raises `TypeError: missing ... required positional argument`. Read the `def` line, not the call.
+
+<PyExercise id="w03-default-warning" initialCode="def status_of(percent, warning_at=96):  # TODO: the default is wrong&#10;    if percent &gt;= 100:&#10;        return 'OVER LIMIT'&#10;    elif percent &gt;= warning_at:&#10;        return 'WARNING'&#10;    return 'OK'&#10;&#10;print(status_of(95))&#10;print(status_of(95, 96))" expectedOutput="WARNING&#10;OK" />
+
+## Waypoint 3: The Wall Around a Function
+
+A variable created inside a function exists only inside it. Parameters are local copies too. A function can read a variable from outside, but it cannot change your copy; it returns a new value and you decide whether to keep it.
+
+That wall is the feature, not the limitation. Because a function cannot reach into the rest of the program, calling it can never silently corrupt something unrelated three files away. Everything it needs comes in as a parameter. Everything it produces goes out through `return`. That contract is what makes it safe to call from anywhere, including from code you have not written yet.
+
+`return` is not limited to one value. Separate them with commas and you get a **tuple**, which you unpack into names on the way out, in the same order. The count of names has to match.
+
+```python
+def double(n):
+    n = n * 2
+    return n
+
+number = 21
+print(double(number))   # 42
+print(number)           # still 21, n was a local copy
+
+def check_record(value, limit):
+    difference = value - limit
+    percent = (value / limit) * 100
+    return difference, percent
+
+difference, percent = check_record(87, 100)
+print(difference, percent)
+```
+
+<PyExercise id="w03-unpack-record" initialCode="def check_record(value, limit):&#10;    difference = value - limit&#10;    percent = (value / limit) * 100&#10;    return difference, percent&#10;&#10;# TODO: unpack both values, then print them on one line&#10;result = check_record(87, 100)&#10;print(result)" expectedOutput="-13 87.0" />
+
+## Waypoint 4: Modules Are Wiring Someone Else Built
+
+`import math` brings in a whole module, and you reach inside with a dot: `math.sqrt(16)`. `from math import sqrt` brings in one name so the dot is no longer needed, at the cost of a reader no longer seeing where it came from. Both are the same module.
+
+Some modules ship with Python, `math`, `random`, `datetime`. Others, like `pandas`, have to be installed first. The `import` keyword does not care which; only the install step differs.
+
+Your own file is a module too. Import it and Python runs every top-level line in it immediately, including the test prints you left behind. The `if __name__ == "__main__":` guard is how you say: run this block only when the file is launched directly, and stay quiet when someone imports it.
+
+```python
+import math
+
+print(math.sqrt(16))
+print(math.ceil(4.2))
+
+from math import sqrt
+
+print(sqrt(16))   # not math.sqrt(16)
+
+def area_of_circle(radius):
+    return math.pi * radius ** 2
+
+if __name__ == "__main__":
+    print(area_of_circle(5))
+```
+
+### Watch out: The Trap
+
+- `import maths` raises `ModuleNotFoundError`. The module is `math`, no `s`.
+- Calling `sqrt(16)` after a plain `import math` raises `NameError`. Either `math.sqrt(16)` or `from math import sqrt`.
+- A `from` import can overwrite a variable of yours with the same name, silently.
+- Test code at the top level runs on every import. Put it behind the guard, or the next engineer gets your debug output in their logs.
+- `ModuleNotFoundError` for a real package means it is not installed. `pip install` it, then import.
+
+The sandbox below arrives as a module too: one component, imported by name. It also clears the previous lesson's scene when it mounts, so nothing follows you between weeks.
+
+<SandboxEmbed />
+
+## The Debrief
+
+The check is now one function in one file, and the next script can import it instead of copying it. That works until the incident export lands: one file of records, a directory of logs, and no guarantee either one exists.

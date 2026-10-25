@@ -1,0 +1,167 @@
+---
+id: "week-06-pandas"
+title: "Data Wrangling with Pandas"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+The incident export is six weeks old and it no longer fits in your head: three thousand rows of `servers.csv`, a for loop inside a for loop, a dict built by hand for every line. The on-call lead asked for average disk use by region and your script took forty seconds to answer. Tonight you stop looping over rows and hand the whole table to **pandas**.
+
+## Waypoint 1: One Column, One Table
+
+A **Series** is one column with an index bolted on. A **DataFrame** is a table of them, and any column you pull back out of a DataFrame is still a Series. Week 4's list of dicts was this shape built by hand, one record at a time. `pd.DataFrame` builds it in one call, and `pd.read_csv` builds it straight from the file.
+
+The payoff is **whole-column arithmetic**. `servers["used"] / servers["total"]` divides every row at once, no loop, and assigning to a new name adds the result as a column. What is left down the left edge is the **index**, and it is not a column: it survives every filter and sort later in this lesson, which is how it manages to bite you in Waypoint 2.
+
+Before you trust any of it, check `.dtypes`. A number-looking column can arrive as text, because the file was exported badly or a stray space got in. An `object` column where you expected numbers is the giveaway, and `.astype(float)` or `pd.to_numeric()` fixes it before the arithmetic joins strings or raises `TypeError`.
+
+```python
+import pandas as pd
+from io import StringIO
+
+values = pd.Series([87, 120, 45])
+print(values)
+
+csv_data = "hostname,region,used,total\nsrv-01,east,87,100\nsrv-02,west,120,100\nsrv-03,east,95,100\n"
+servers = pd.read_csv(StringIO(csv_data))
+print(servers.dtypes)
+
+servers["percent"] = (servers["used"] / servers["total"]) * 100
+print(servers)
+```
+
+```python
+import pandas as pd
+
+readings = pd.DataFrame({"count": ["12", "45", "8"], "limit": [50, 50, 50]})
+print(readings.dtypes)                    # count is object, limit is int64
+
+readings["count"] = readings["count"].astype(float)
+readings["percent"] = (readings["count"] / readings["limit"]) * 100
+print(readings)
+```
+
+<PyExercise id="w06-dtype-arithmetic" initialCode="import pandas as pd&#10;readings = pd.DataFrame(dict(count=['12', '45', '8'], limit=[50, 50, 50]))&#10;readings['count'] = readings['count']  # TODO: this column is text - convert it&#10;readings['percent'] = (readings['count'] / readings['limit']) * 100&#10;print(readings['percent'].iloc[0])" expectedOutput="24.0" />
+
+<PredictOutput conceptId="w06-predict-object-column" codeSnippet="import pandas as pd&#10;readings = pd.DataFrame(dict(count=[&quot;12&quot;, &quot;45&quot;]))&#10;print(readings[&quot;count&quot;].dtype)" options={['object', 'int64', 'float64']} correctIndex={0} rationale="Quoted numbers arrive as text, so pandas stores the column as `object`. `.astype(float)` is what turns it back into arithmetic-ready data." />
+
+## Waypoint 2: Pointing at Rows
+
+Two ways to reach a row, and they answer different questions. `.iloc[]` is **position**. `.loc[]` is **label**. With the default index they look identical, which is exactly why the difference bites you after a filter removes rows.
+
+Column selection is the bracket you already use: one name gives a Series, a list of names gives a DataFrame.
+
+**Boolean filtering** replaces every `if` inside every loop you have written since Week 2. A comparison against a column returns a Series of `True`/`False`. Put that mask inside the brackets and you keep only the `True` rows. Combine conditions with `&` and `|`, never `and`/`or`, and give each comparison its own brackets. A mask is only a Series of booleans, so give it a name when two queries share a condition and reuse it instead of retyping the comparison.
+
+```python
+import pandas as pd
+
+servers = pd.DataFrame({
+    "hostname": ["srv-01", "srv-02", "srv-03"],
+    "region": ["east", "west", "east"],
+    "percent": [87.0, 120.0, 95.0],
+})
+
+print(servers.iloc[0])                  # the row in position 0
+print(servers.loc[0, "hostname"])       # the row labelled 0
+print(servers[["hostname", "region"]])  # two columns, still a DataFrame
+
+over_limit = servers[servers["percent"] >= 100]
+east_over = servers[(servers["region"] == "east") & (servers["percent"] >= 90)]
+print(east_over)
+```
+
+### Watch out: The Trap
+
+- `and`/`or` between two comparisons raises `ValueError: The truth value of a Series is ambiguous`. Use `&` and `|`.
+- Brackets are not decoration. Write `(a) & (b)`, not `a & b`.
+- `servers["region" == "east"]` puts the comparison inside the column brackets and raises `KeyError`. The mask belongs outside: `servers[servers["region"] == "east"]`.
+- Filtered rows keep their original labels. `.loc[0]` raises `KeyError` if row 0 was filtered away. Use `.iloc[0]` when you mean the first remaining row.
+
+<PyExercise id="w06-filter-percent" initialCode="import pandas as pd&#10;servers = pd.DataFrame(dict(hostname=['srv-01', 'srv-03', 'srv-05'], percent=[87, 120, 101]))&#10;over = servers['percent'] &gt;= 100  # TODO: that is a mask, not the filtered rows&#10;print(len(over))" expectedOutput="2" />
+
+### Filter the Grid
+
+Each block in the sculpture below is one row, labelled with its host and status. A boolean mask is easier to trust when you can see which rows survive: run the exercise and the `False` rows drop away while the `True` rows stay exactly where they are.
+
+<div class="scene-split-layout">
+  <div class="scene-col">
+    <SandboxEmbed mode="df" />
+  </div>
+  <div class="code-col">
+    <PyExercise id="w06-scene-filter" initialCode="import pandas as pd&#10;servers = pd.DataFrame(dict(host=['srv-01', 'srv-02', 'srv-03', 'srv-04'], status=['OK', 'OVER LIMIT', 'WARNING', 'OVER LIMIT']))&#10;visualize_dataframe(servers.to_dict('records'))&#10;over = servers['status'] == 'OVER LIMIT'&#10;kept = servers  # TODO: keep only the rows where over is True&#10;filter_rows(kept.index.tolist())&#10;print(len(kept))" expectedOutput="2" />
+  </div>
+</div>
+
+## Waypoint 3: One Number Per Group
+
+`groupby` splits the rows into groups, but on its own it hands you a groupby object, not a table. Ask it a question: `.mean()`, `.agg(["mean", "max", "min"])`, `.size()`. `value_counts()` is the shortcut for counting one categorical column.
+
+`sort_values` orders rows by one or more columns, smallest first unless you say otherwise. Sorting moves rows; it does not renumber them.
+
+```python
+import pandas as pd
+
+servers = pd.DataFrame({
+    "hostname": ["srv-01", "srv-02", "srv-03"],
+    "region": ["east", "west", "east"],
+    "percent": [87.0, 120.0, 95.0],
+})
+
+grouped = servers.groupby("region")
+
+print(grouped["percent"].mean())
+print(grouped["percent"].agg(["mean", "max", "min"]))
+print(grouped.size())
+
+print(servers["region"].value_counts())
+print(servers.sort_values("percent", ascending=False))
+print(servers.sort_values(["region", "percent"]))
+```
+
+### Watch out: The Trap
+
+- A groupby with no aggregation is not a result. No `.mean()`, no numbers.
+- A typo or mixed case in the grouping column quietly produces extra groups. Check `.unique()` first.
+- Largest-first needs `ascending=False`. Nothing errors if you forget it, you just read the table backwards.
+- The old index travels with the sorted rows. Add `.reset_index(drop=True)` when you want fresh numbering.
+
+## Waypoint 4: Apply, Then Ship It
+
+A **lambda** is a `def` you did not bother naming, for one expression you will use once: `lambda parameters: expression`. That is the whole syntax. One expression, so no `if` statements and no loops, only chained `if`/`else`.
+
+`.apply()` runs any function down a column. Start with a named function when the logic branches; the lambda is that same logic compressed for a single inline use. Then finish the job. `.describe()` gives the quick overview, `.to_csv(path, index=False)` writes the report without the index column, and `.plot(kind="bar")` gives the on-call lead the chart they actually asked for.
+
+```python
+import pandas as pd
+
+servers = pd.DataFrame({
+    "hostname": ["srv-01", "srv-02", "srv-03"],
+    "region": ["east", "west", "east"],
+    "percent": [87.0, 120.0, 95.0],
+})
+
+def classify(percent):
+    if percent >= 100:
+        return "OVER LIMIT"
+    elif percent >= 90:
+        return "WARNING"
+    else:
+        return "OK"
+
+servers["status"] = servers["percent"].apply(classify)
+
+servers["status"] = servers["percent"].apply(
+    lambda p: "OVER LIMIT" if p >= 100 else "WARNING" if p >= 90 else "OK"
+)
+
+print(servers["status"].value_counts())
+servers.to_csv("servers_report.csv", index=False)
+```
+
+<PyExercise id="w06-apply-classify" initialCode="import pandas as pd&#10;servers = pd.DataFrame(dict(hostname=['srv-01', 'srv-03', 'srv-05'], percent=[87, 120, 101]))&#10;&#10;def classify(percent):&#10;    if percent &gt;= 100:&#10;        return 'OVER LIMIT'&#10;    elif percent &gt;= 90:&#10;        return 'WARNING'&#10;    else:&#10;        return 'OK'&#10;&#10;servers['status'] = servers['percent']  # TODO: run classify on the column&#10;print(servers['status'].iloc[0], servers['status'].iloc[1], servers['status'].iloc[2])" expectedOutput="OK OVER LIMIT OVER LIMIT" />
+
+## The Debrief
+
+Three thousand rows and no loop. The export that took forty seconds now answers in one line, and `servers_report.csv` is sitting on disk with a status column the on-call lead can filter. Next week the same fleet starts shipping log lines that no CSV parser will survive, and the cleaning moves from columns to characters.

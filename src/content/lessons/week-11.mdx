@@ -1,0 +1,130 @@
+---
+id: "week-11-streamlit-dashboard"
+title: "The Rerun Mental Model"
+estimatedMinutes: 18
+---
+
+## The Hook
+
+The on-call rota has three people on it and one of them refuses to open a terminal at 3 AM, which is fair. The incident data needs a page someone else can open. Before you reach for a UI library, you need its one strange rule: every click, every keystroke, every slider drag **reruns your whole script from the top**. Widgets draw nothing on their own; they set values, the script runs again, and the new values decide what gets drawn.
+
+That rule is a state machine, and you can learn it without a browser. Tonight you build the machine in plain Python: a `state` dictionary that survives a rerun, and a function that reads it, decides, and returns.
+
+## Waypoint 1: Every interaction reruns the whole file
+
+A UI script is not a server holding your variables between clicks. It is a function called again for each event, and each call starts with fresh locals. The only thing carried across is the **state** dictionary you pass back in.
+
+Once you see the rerun as a function call, the bugs stop being mysterious. A counter that resets was a local variable. A page that forgets you logged in was a state key that never got written.
+
+```python
+def run_once(state, clicked):
+    if "scans" not in state:
+        state["scans"] = 0
+    if clicked:
+        state["scans"] += 1
+    return state["scans"]
+
+state = {}
+print(run_once(state, False))   # first rerun, nothing clicked
+print(run_once(state, True))    # click, whole function runs again
+print(run_once(state, True))    # another click, same state dict
+print(run_once(state, True))    # third click, still the same dict
+```
+
+The output is `0`, `1`, `2`, `3`. Nothing inside `run_once` remembered the previous call; the dictionary did. That division is the entire mental model: **locals are per-rerun, state is durable**.
+
+### Watch out: The Trap
+
+- Using a plain variable for anything that must outlive a click. It is recreated at the top of every rerun, so the counter resets and looks broken.
+- Assuming only the clicked widget's code runs again. The whole file runs, every time, including the slow parts.
+- Initializing state unconditionally. `state["scans"] = 0` on every rerun erases the count before you can increment it.
+
+<PyExercise id="w11-session-state-counter" initialCode="state = &#123;&#125;&#10;&#10;def run_once(state, clicked):&#10;    # TODO: only initialize state['scans'] = 0 when 'scans' is not in state&#10;    state['scans'] = 0&#10;    if clicked:&#10;        state['scans'] += 1&#10;&#10;for clicked in (False, True, True, True):&#10;    run_once(state, clicked)&#10;print('Total:', state['scans'])" expectedOutput="Total: 3" />
+
+## Waypoint 2: Build the filter out of the data
+
+A filter is not a callback and not an event handler. It is a value, recomputed from scratch on every rerun, that slices the rows. The important part is where the options come from: the data itself, not a list you typed last month and forgot to update.
+
+```python
+records = [
+    {"host": "srv-01", "region": "eu", "percent": 87.0},
+    {"host": "srv-02", "region": "us", "percent": 102.0},
+    {"host": "srv-03", "region": "eu", "percent": 95.0},
+]
+
+regions = [r["region"] for r in records]
+options = ["all"] + sorted(set(regions))
+
+chosen = "eu"   # on a real page this is the widget's value from the rerun
+visible = records if chosen == "all" else [r for r in records if r["region"] == chosen]
+print(options)
+print([r["host"] for r in visible])
+```
+
+There is no submit button and no stored result. The selectbox changes, the script reruns, the new `chosen` slices the rows, and the page redraws. The widget is the filter.
+
+### Watch out: The Trap
+
+- Hard-coding the options. The inventory gains an `apac` row, the dropdown never offers it, and the page quietly lies.
+- Filtering a copy and then wondering why the page still shows everything. Return the filtered list and draw *that*.
+- Drawing an empty result and saying nothing. A blank page reads as a broken page. Show a message when the filter matches no rows.
+
+<PyExercise id="w11-options-from-data" initialCode="regions = ['eu', 'us', 'eu', 'apac']&#10;options = ['all', 'eu']  # TODO: build these from regions&#10;print(options)" expectedOutput="['all', 'apac', 'eu', 'us']" />
+
+## Waypoint 3: A gate is an early return
+
+A login page is not a separate mode. It is one function that checks state at the top and returns before it draws anything protected. Week 9's `login_user()` (PBKDF2 hash plus `hmac.compare_digest()`) plugs in unchanged; only the caller moved.
+
+```python
+def submit_login(state, username, password, users_store):
+    if login_user(username, password, users_store):
+        state["logged_in"] = True
+        return run_once(state, True)   # next rerun now sees the flag
+    return "Wrong username or password."
+
+def render_page(state):
+    if not state.get("logged_in", False):
+        return "Please log in."
+    return "Protected dashboard"
+```
+
+`render_page` returns at the guard, so everything below it is unreachable for a logged-out visitor. That property is the gate. Forcing a rerun after login is the other half: the flag is set, but the page will not notice until the function runs again.
+
+### Watch out: The Trap
+
+- Drawing the dashboard and *then* checking the flag. The content flashes before the gate, and the flash is the leak.
+- Setting `state["logged_in"] = True` without triggering a rerun. The page keeps showing the login form until an unrelated click redraws it.
+- Rebuilding `users_store` from the file on every rerun. Load it once, outside the per-rerun path, or keep it in state.
+- Storing the password rather than the Week 9 digest. A rerun is not a reason to lower the security bar.
+
+## Waypoint 4: What survives a rerun, and what never should
+
+Only `state` survives. That makes it the right place for a loaded table and the wrong place for a plaintext password or an API key. Cache expensive work by checking for the key first, and read secrets from the environment every run.
+
+```python
+import os
+import time
+
+def load_fleet(state):
+    """Load the fleet once; later reruns reuse the cached list."""
+    if "fleet" not in state:
+        time.sleep(1)                   # pretend this is a slow query
+        state["fleet"] = [{"host": "srv-01", "percent": 87.0}]
+    return state["fleet"]
+
+api_key = os.environ.get("OPS_API_KEY", "")
+print("OPS_API_KEY loaded:", len(api_key), "chars")
+```
+
+The first rerun pays for the load; every click after it reads the cached list. The key is read every rerun and never copied into `state`, because state is exactly the thing a debug dump or a shared session might expose.
+
+### Watch out: The Trap
+
+- Caching in a local variable. It dies with the rerun, so the slow load runs every time.
+- Caching a mutable object and then mutating it in place. The next rerun sees the mutation and the "fresh load" is no longer fresh.
+- Putting secrets in `state`. Print confirmations, never values; keep the key in the environment.
+- Optimizing before measuring. The cache exists for slow work; do not add one to a dictionary lookup.
+
+## The Debrief
+
+The page is now a state machine you can reason about: a function that runs top to bottom, reads a durable dictionary, filters data it derives itself, and returns early at the gate. Every widget library adds syntax on top of that model, so the model is the transferable part. Next week you call an LLM API from the same script, and the key handling you just practised is the first thing that will matter.

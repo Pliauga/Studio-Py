@@ -1,0 +1,204 @@
+---
+id: "week-15-rest-apis-with-fastapi"
+title: "REST APIs with FastAPI"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+Twenty monitoring agents across three regions need to push disk readings to your central ops store and ask which hosts are in trouble, without ever opening `ops.db` themselves. You need an HTTP service that speaks JSON, validates payloads before they reach the database, returns the right status code, and documents itself. That service is **FastAPI**, and it is a real library: `from fastapi import FastAPI` is the code that runs the route, not a comment describing one.
+
+## Waypoint 1: Routes, Verbs, and Path Parameters
+
+A REST API maps **HTTP verbs** and **URL paths** to Python functions. `GET` reads without changing state, `POST` creates, `DELETE` removes. FastAPI turns the decorator `@app.get("/hosts/{hostname}")` into a route and turns the function's type hints into validation.
+
+A path segment in braces is passed to the function as an argument. Return a dictionary and FastAPI serialises it to JSON with `200 OK`. Return a typed Pydantic model and it validates the response shape too.
+
+```python
+from fastapi import FastAPI, HTTPException
+
+app = FastAPI(title="Ops Fleet API")
+
+FLEET = {
+    "srv-01": {"hostname": "srv-01", "region": "eu", "percent": 87.0},
+    "srv-02": {"hostname": "srv-02", "region": "us", "percent": 104.5},
+}
+
+@app.get("/hosts/{hostname}")
+async def get_host(hostname: str) -> dict:
+    key = hostname.strip().lower()
+    if key not in FLEET:
+        raise HTTPException(status_code=404, detail="Host not found")
+    return FLEET[key]
+```
+
+Point `uvicorn app:app --reload` at that file and open `/docs`: the OpenAPI page is generated from the route and its type hints, so the documentation cannot drift from the code.
+
+Tests do not need a port. `TestClient` wraps the `app` object and sends requests in memory, which is the fastest way to assert a `404` instead of eyeballing one:
+
+```python nonRunnable=true reason="TestClient starts a worker thread; the browser sandbox is single-threaded. Run this locally with pytest."
+from fastapi.testclient import TestClient
+
+client = TestClient(app)
+
+def test_missing_host_is_404():
+    assert client.get("/hosts/srv-99").status_code == 404
+```
+
+The editor below gets the same app and the same requests through `httpx.ASGITransport`, which is an async client instead of a threaded one. Fix the route so the missing host becomes a real `404`.
+
+### Watch out: The Trap
+
+- Using `GET` for an endpoint that mutates data. Pre-fetchers, health checks, and retries replay `GET` freely.
+- Accepting a raw `dict` as a `POST` body instead of a typed model. You lose validation, coercion, and `/docs` in one stroke.
+- Declaring a filter without a default and then wondering why a bare `/hosts` fails with `422`.
+
+<PyExercise id="w15-route-lookup" initialCode="import asyncio&#10;import httpx&#10;from fastapi import FastAPI, HTTPException&#10;from httpx import ASGITransport, AsyncClient&#10;&#10;app = FastAPI()&#10;FLEET = &#123;'srv-01': &#123;'percent': 87.0&#125;, 'srv-02': &#123;'percent': 104.5&#125;&#125;&#10;&#10;@app.get('/hosts/&#123;hostname&#125;')&#10;async def get_host(hostname: str) -&gt; dict:&#10;    key = hostname.strip().lower()&#10;    # TODO: raise HTTPException(status_code=404, detail='Host not found') when key is missing&#10;    record = FLEET[key]&#10;    return &#123;'hostname': key, 'status': 'OVER LIMIT' if record['percent'] &gt;= 100 else 'OK'&#125;&#10;&#10;async def main() -&gt; None:&#10;    transport = ASGITransport(app=app)&#10;    async with AsyncClient(transport=transport, base_url='http://test') as client:&#10;        ok = await client.get('/hosts/SRV-01')&#10;        missing = await client.get('/hosts/srv-99')&#10;    assert ok.status_code == 200&#10;    assert missing.status_code == 404&#10;    print(ok.status_code, ok.json())&#10;    print(missing.status_code, missing.json())&#10;&#10;asyncio.run(main())" expectedOutput="200 &#123;'hostname': 'srv-01', 'status': 'OK'&#125;&#10;404 &#123;'detail': 'Host not found'&#125;" />
+
+## Waypoint 2: Query Parameters and Validated Request Bodies
+
+Parameters in the signature that are not in the path become **query parameters** (`?region=eu&min_percent=90`). Defaults make them optional. FastAPI coerces them to the annotated type and rejects a non-numeric `min_percent` with `422` before your function runs.
+
+For `POST`, declare a Pydantic model as the parameter type. FastAPI parses the JSON body, coerces fields, and returns `422` with a list of the exact fields that failed. That is Week 14's validation contract, enforced at the boundary.
+
+```python
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+class ReadingIn(BaseModel):
+    hostname: str
+    used_gb: float = Field(ge=0)
+    limit_gb: float = Field(gt=0)
+
+HOSTS = [
+    {"hostname": "srv-01", "region": "eu", "percent": 87.0},
+    {"hostname": "srv-02", "region": "eu", "percent": 102.0},
+    {"hostname": "srv-03", "region": "us", "percent": 95.0},
+]
+
+@app.get("/hosts")
+async def list_hosts(region: str | None = None, min_pct: float = 0.0) -> list[dict]:
+    rows = [r for r in HOSTS if r["percent"] >= min_pct]
+    if region is not None:
+        rows = [r for r in rows if r["region"] == region]
+    return rows
+```
+
+A route handler is thin on purpose: it validates, delegates to a pure function, and returns. The filtering logic is the part worth testing, and it is the same logic the next exercise asks you to write.
+
+### Watch out: The Trap
+
+- Returning `HTTPException` from a helper instead of raising it. Only a raised exception becomes a status code; a returned one becomes a `200` body.
+- Validating in the handler after the insert. The database now holds the bad row and the client got a `201`.
+- Marking every query parameter required. Optional filters need defaults, and the default must be the unfiltered value.
+
+<PyExercise id="w15-query-filter" initialCode="sample = [&#10;    &#123;'hostname': 'srv-01', 'region': 'eu', 'percent': 87.0&#125;,&#10;    &#123;'hostname': 'srv-02', 'region': 'eu', 'percent': 102.0&#125;,&#10;    &#123;'hostname': 'srv-03', 'region': 'us', 'percent': 95.0&#125;,&#10;]&#10;def filter_hosts(rows, region=None, min_pct=0.0):&#10;    # TODO: filter by min_pct, and also by region when region is not None&#10;    return rows&#10;&#10;print([r['hostname'] for r in filter_hosts(sample, region='eu', min_pct=90.0)])" expectedOutput="['srv-02']" />
+
+## Waypoint 3: Status Codes that Tell the Truth
+
+Returning a `"not found"` body with `200 OK` breaks every probe that checks `response.status_code`. Speak the protocol:
+- `200 OK` for a successful read
+- `201 Created` when a `POST` stores a new resource
+- `422 Unprocessable Entity` when validation fails
+- `401 Unauthorized` when credentials are missing
+- `404 Not Found` when the host does not exist
+
+`raise HTTPException(status_code=404, detail="Host not found")` aborts the handler and sends that exact status with a JSON body. `@app.post("/readings", status_code=201)` sets the success code declaratively.
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+STORE = {}
+
+class ReadingIn(BaseModel):
+    hostname: str
+    percent: float = Field(ge=0)
+
+@app.post("/readings", status_code=201)
+async def create_reading(payload: ReadingIn) -> dict:
+    host = payload.hostname.strip().lower()
+    if not host:
+        raise HTTPException(status_code=422, detail="hostname required")
+    STORE[host] = {"hostname": host, "percent": float(payload.percent)}
+    return STORE[host]
+```
+
+The `if` is a business rule, not a type rule: Pydantic accepts an empty string as a valid `str`. Validation at the boundary catches the wrong type; the handler catches the wrong value.
+
+### Watch out: The Trap
+
+- Using `404` for a malformed payload. The route exists; the body is wrong. That is `422`.
+- Letting a `KeyError` become a `500`. An unhandled exception is a bug in your service, not a client error, and FastAPI will report it as such.
+- Returning the created object with `200`. `201` tells the client a resource now exists; caches and retries depend on that distinction.
+
+<PyExercise id="w15-http-status-dispatch" initialCode="import asyncio&#10;import httpx&#10;from fastapi import FastAPI, HTTPException&#10;from httpx import ASGITransport, AsyncClient&#10;from pydantic import BaseModel, Field&#10;&#10;app = FastAPI()&#10;STORE = &#123;&#125;&#10;&#10;class ReadingIn(BaseModel):&#10;    hostname: str&#10;    percent: float = Field(ge=0)&#10;&#10;@app.post('/readings', status_code=201)&#10;async def create_reading(payload: ReadingIn) -&gt; dict:&#10;    host = payload.hostname.strip().lower()&#10;    if not host:&#10;        # TODO: raise HTTPException(status_code=422, detail='hostname required')&#10;        return &#123;'detail': 'hostname required'&#125;&#10;    STORE[host] = &#123;'hostname': host, 'percent': float(payload.percent)&#125;&#10;    return STORE[host]&#10;&#10;async def main() -&gt; None:&#10;    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:&#10;        bad = await client.post('/readings', json=&#123;'hostname': '', 'percent': 88&#125;)&#10;        good = await client.post('/readings', json=&#123;'hostname': 'srv-01', 'percent': 88&#125;)&#10;    assert bad.status_code == 422&#10;    assert good.status_code == 201&#10;    print(bad.status_code, good.status_code, good.json())&#10;&#10;asyncio.run(main())" expectedOutput="422 201 &#123;'hostname': 'srv-01', 'percent': 88.0&#125;" />
+
+## Waypoint 4: Testing Endpoints Without Opening a Port
+
+`TestClient` replaces the network with an in-memory call: it takes the `app`, runs the ASGI application, and returns a response object with `.status_code` and `.json()`. Tests stay fast, deterministic, and port-free.
+
+The database is the other dependency. `Depends(get_db)` asks FastAPI for a connection; tests override that dependency with an in-memory SQLite database, so the real `ops.db` is never touched.
+
+```python
+import sqlite3
+from fastapi import Depends, FastAPI, HTTPException
+
+app = FastAPI()
+
+def get_db():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE readings (hostname TEXT PRIMARY KEY, percent REAL NOT NULL)")
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+@app.post("/readings", status_code=201)
+def create_reading(payload: dict, conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    host = payload["hostname"].strip().lower()
+    percent = float(payload["percent"])
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO readings (hostname, percent) VALUES (?, ?)",
+            (host, percent),
+        )
+    return {"hostname": host, "percent": percent}
+
+@app.get("/readings/{hostname}")
+def get_reading(hostname: str, conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    row = conn.execute(
+        "SELECT hostname, percent FROM readings WHERE hostname = ?",
+        (hostname.strip().lower(),),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"hostname": row["hostname"], "percent": row["percent"]}
+```
+
+The test owns the connection and never opens `ops.db`:
+
+```python nonRunnable=true reason="TestClient starts a worker thread; the browser sandbox is single-threaded. Run this locally with pytest."
+from fastapi.testclient import TestClient
+
+client = TestClient(app)
+
+def test_create_and_missing():
+    created = client.post("/readings", json={"hostname": "srv-01", "percent": 92.5})
+    assert created.status_code == 201
+    assert client.get("/readings/srv-99").status_code == 404
+```
+
+### Watch out: The Trap
+
+- Hardcoding `sqlite3.connect("ops.db")` inside the handler. Every test run pollutes your real local database.
+- Returning the traceback in `detail`. Log it server-side; send a safe message to the caller.
+- Testing only the happy path. `404` and `422` are where the unhandled exceptions live.
+
+## The Debrief
+
+The fleet store now speaks HTTP through real FastAPI: `POST` validated readings, `GET` filtered hosts, `422` for bad payloads, `404` for missing ones, and tests that run in memory against `:memory:` SQLite. Next week: what happens when this API, or the scanner behind it, has to poll fifty slow endpoints without waiting fifty seconds.

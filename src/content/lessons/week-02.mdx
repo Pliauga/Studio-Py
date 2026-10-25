@@ -1,0 +1,130 @@
+---
+id: "week-02-decisions-and-loops"
+title: "Conditionals and Loops"
+estimatedMinutes: 18
+---
+
+## The Hook
+
+It is 3:14 AM and `srv-07` is sitting at 95% disk. You are not going to watch a progress bar for the next hour. You need a script that decides for itself when a number has crossed the line, and keeps checking until the list runs out. That is two tools: a **branch** and a **loop**.
+
+## Waypoint 1: Comparisons Are Just Values
+
+Six operators, six questions, two possible answers: `==`, `!=`, `>`, `<`, `>=`, `<=`. Each one asks something about two values and replies `True` or `False`. That is the entire vocabulary of decision-making in Python, and everything else in this lesson is built on top of it.
+
+Two slips cost people their night. `=` stores a value, `==` asks about one, and `"20" == 20` is always `False` because text and a number are different types that never compare equal. When a comparison surprises you, print `type()` on both sides before you start rewriting logic.
+
+The part most people miss: the answer is a value in its own right, of type `bool`. You can store it under a name, pass it to another function, and combine it with `and`, `or`, `not`. Bracket each comparison when you combine them. It costs two characters and removes every doubt about what binds first.
+
+```python
+value = 23.7
+limit = 20
+print(value == limit)
+print(value > limit)
+print(value <= limit)
+
+is_over = value > limit
+print(is_over)
+print(type(is_over))
+
+percent = 95.0
+print((percent >= 90) and (percent < 100))
+print(not (percent < 90))
+```
+
+<PyExercise id="w02-compare-disk-percent" initialCode="pct_warn = 95.0&#10;pct_over = 105.0&#10;# TODO: combine &gt;= 90 and &lt; 100 with 'and' so 95.0 is True and 105.0 is False&#10;is_warn_1 = pct_warn &gt;= 90&#10;is_warn_2 = pct_over &gt;= 90&#10;print(is_warn_1, is_warn_2)" expectedOutput="True False" />
+
+<PredictOutput conceptId="w02-predict-branch-order" codeSnippet="percent = 95.0&#10;if percent &gt;= 90:&#10;    print(&quot;WARNING&quot;)&#10;elif percent &gt;= 100:&#10;    print(&quot;OVER LIMIT&quot;)" options={['WARNING', 'OVER LIMIT', 'nothing prints']} correctIndex={0} rationale="The first true branch wins and every later one is skipped. `95.0` clears `&gt;= 90` first, so the over-limit branch is unreachable for it." />
+
+## Waypoint 2: The First True Branch Wins
+
+`if` runs its block only when the condition is `True`. `else` covers everything the `if` rejected, so exactly one of the two runs, never both and never neither. `elif` adds more paths, checked top to bottom. The first `True` wins and every later branch is skipped, even if it would also have matched.
+
+That ordering rule is where over-limit disks get quietly filed as warnings. Put the most specific condition first, always: `percent >= 100` before `percent >= 90`. Reverse them and the second branch can never run, while the output still looks perfectly reasonable.
+
+Indentation is syntax here, not style. Python has no braces, so the indented lines are the block. Dedent one line and it runs on every pass, whether the condition was true or not. Occasionally that is what you want. Usually it is a bug that survives review because it looks deliberate.
+
+```python
+percent = 88.0
+if percent >= 100:
+    status = "OVER LIMIT"
+elif percent >= 90:
+    status = "WARNING"
+else:
+    status = "OK"
+print(status)
+
+value = 23.7
+limit = 20
+if value > limit:
+    print("checking...")   # part of the if
+    print("OVER")          # part of the if
+print("done")              # not indented, runs either way
+```
+
+### Watch out: The Trap
+
+- `if x = 5:` is a `SyntaxError`. `=` stores, `==` asks. Same for `while count = 5:`.
+- Every `if`, `elif`, and `else` line ends with a colon. Missing it is a `SyntaxError`, not a warning.
+- The line after the colon must be indented four spaces. Python will not guess what you meant, it stops with `IndentationError`.
+- A broad condition above a specific one runs the wrong branch and tells you nothing. Reorder the chain, do not add another `if`.
+- `"20" == 20` is `False`. Cast before you compare anything that came out of a file or a form.
+
+<PyExercise id="w02-elif-order" initialCode="percent = 105.0&#10;if percent &gt;= 90:  # TODO: which branch should run first?&#10;    status = 'WARNING'&#10;elif percent &gt;= 100:&#10;    status = 'OVER LIMIT'&#10;else:&#10;    status = 'OK'&#10;print(status)" expectedOutput="OVER LIMIT" />
+
+## Waypoint 3: Loops That Wait
+
+`while` repeats its block for as long as the condition holds, with the same indentation rule as `if`. The condition has to change inside the block, otherwise nothing stops.
+
+An infinite loop is not like the errors you have already met. It does not raise, does not print, does not exit. It just sits there looking like a slow script while the terminal produces nothing. If it happens, interrupt the kernel. Do not wait it out, and do not assume it will end on its own. Then read the loop body and find the line that was supposed to change the condition.
+
+When you do not know the count in advance, loop until something inside decides to stop: `while True:` with a `break`. `break` leaves the loop immediately. `continue` skips the rest of this pass and goes straight back to the condition, which is how you skip one bad host without abandoning the sweep.
+
+```python
+count = 1
+while count <= 3:
+    print(count)
+    count += 1
+print("done")
+
+n = 0
+while n < 5:
+    n += 1
+    if n == 3:
+        continue   # skip printing 3
+    print(n)
+```
+
+### Watch out: The Trap
+
+- Forget to update what the condition checks and you get an infinite loop with no error at all.
+- Every `while True:` needs a `break` it can actually reach. A `break` in a branch that never fires is the same as no break.
+- Assigning `i` inside a `for` loop does nothing to the count. `range()` decided every value before the first pass.
+
+## Waypoint 4: Counting What You Already Know
+
+`for` says the count out loud, so use it when you know the count. `range(5)` gives `0` to `4`. The stop value is never included, and that single rule causes more off-by-one bugs than anything else in this language. `range(1, 5)` gives four numbers, not five, and the loop still looks correct when you read it back.
+
+`range(start, stop, step)` counts by more than one, or downward with a negative step. `enumerate()` hands you the position and the value together, with `start=1` when you want human numbering instead of programmer numbering.
+
+The choice between the two loops is not stylistic. Known count, `for`. Waiting on a condition or a signal that may never arrive, `while`. If you catch yourself tracking a counter by hand inside a `for`, you wanted `enumerate()`. If you catch yourself writing `for i in range(len(hosts))` just to print a position, same answer.
+
+```python
+for i in range(5):
+    print(i)
+
+for i in range(1, 6):
+    print(i)          # 1 2 3 4 5
+
+for i in range(10, 0, -1):
+    print(i)          # 10 9 8 ... 1
+
+for i, letter in enumerate("cat", start=1):
+    print(f"letter {i}: {letter}")
+```
+
+<PyExercise id="w02-range-total" initialCode="total = 0&#10;for i in range(1, 5):  # TODO: this stops one short&#10;    total += i&#10;print(total)" expectedOutput="15" />
+
+## The Debrief
+
+The script now decides and repeats without you: it can flag `srv-07` on its own and keep sweeping every remaining host until the list is done. It is also, by the third copy of the same threshold, an unmaintainable mess. That is the next problem, and it has a name.

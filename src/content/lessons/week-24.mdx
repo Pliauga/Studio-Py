@@ -1,0 +1,194 @@
+---
+id: "week-24-packaging-and-architecture"
+title: "Architecture and Deployment"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+Over twenty-four weeks you have built a CLI scanner, validated data models, a FastAPI service, an async poller, streaming log generators, retry decorators, structured JSON logging, an idempotent task worker, an indexed SQLite store, HMAC security guards, and a test suite. Right now they live in a tangle of scripts that only run if your terminal happens to be in the right folder. Tonight you organize them into a clean **layered package**, declare dependencies and CLI entrypoints in **`pyproject.toml`**, and wire the release pipeline so anyone can `pip install` and run your platform with a single command.
+
+## Waypoint 1: Separate Domain Logic from Infrastructure
+
+When database queries, HTTP status codes, and threshold arithmetic all live inside the same 600-line file, changing a SQL column breaks your CLI and importing a helper starts a web server.
+
+Structure a real Python package into three clear layers where dependencies point inward:
+1. **`domain.py` (Core)**: Pure Python dataclasses (`HostReading`) and business rules (`classify_status()`). Imports nothing from FastAPI or `sqlite3`. Fast and trivial to test.
+2. **`storage.py` / `adapters.py` (Infrastructure)**: SQLite repositories, HTTP clients, and queues that accept and return domain objects.
+3. **`cli.py` / `api.py` (Entrypoints)**: Thin shells that parse CLI flags or HTTP requests, call the domain and storage layers, and format the response.
+
+```python
+from dataclasses import dataclass
+
+# 1. Domain layer (pure Python, zero I/O)
+@dataclass(frozen=True)
+class HostReading:
+    hostname: str
+    used_gb: float
+    limit_gb: float = 100.0
+
+    @property
+    def percent(self) -> float:
+        return (self.used_gb / self.limit_gb) * 100.0
+
+    @property
+    def status(self) -> str:
+        if self.percent >= 100.0:
+            return "OVER LIMIT"
+        if self.percent >= 90.0:
+            return "WARNING"
+        return "OK"
+
+# 2. Entrypoint presenter (thin wrapper around domain)
+def render_summary(readings: list[HostReading]) -> dict[str, int]:
+    counts = {"OK": 0, "WARNING": 0, "OVER LIMIT": 0}
+    for r in readings:
+        counts[r.status] += 1
+    return counts
+
+fleet = [HostReading("srv-01", 70), HostReading("srv-02", 95), HostReading("srv-03", 110)]
+print(render_summary(fleet))
+```
+
+<PyExercise id="w24-domain-separation" initialCode="from dataclasses import dataclass&#10;&#10;@dataclass(frozen=True)&#10;class Reading:&#10;    host: str&#10;    pct: float&#10;&#10;def over_limit_hosts(readings: list[Reading], threshold: float = 100.0) -&gt; list[str]:&#10;    &quot;&quot;&quot;Return sorted hostnames for readings with pct &gt;= threshold.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;sample = [Reading('srv-03', 105.0), Reading('srv-01', 88.0), Reading('srv-02', 100.0)]&#10;print(over_limit_hosts(sample))" expectedOutput="['srv-02', 'srv-03']" />
+
+## Waypoint 2: `pyproject.toml` and Installable Entrypoints
+
+Modern Python projects use a single standard configuration file at the root of the repository: **`pyproject.toml`**. It replaces scattered `setup.py`, `setup.cfg`, and tool dot-files with one declarative manifest.
+
+Inside `pyproject.toml`, `[project]` declares the package name, version, minimum Python version, and runtime `dependencies`. Even better, `[project.scripts]` maps a terminal command name (like `ops-scan`) directly to a Python `module:function` entrypoint (`ops_console.cli:main`). Running `pip install -e .` installs your package in editable mode and puts `ops-scan` on your shell `PATH`.
+
+```toml
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ops-console"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110,<1.0",
+    "pandas>=2.0,<3.0",
+    "requests>=2.31,<3.0",
+    "bcrypt>=4.0,<5.0",
+]
+
+[project.scripts]
+ops-scan = "ops_console.cli:main"
+```
+
+```python
+import tomllib
+
+pyproject_raw = """
+[project]
+name = "ops-console"
+version = "1.0.0"
+
+[project.scripts]
+ops-scan = "ops_console.cli:main"
+"""
+
+manifest = tomllib.loads(pyproject_raw)
+print(manifest["project"]["name"], manifest["project"]["version"])
+print(manifest["project"]["scripts"]["ops-scan"])
+```
+
+### Watch out: The Trap
+
+- Circular imports (`api.py` imports from `storage.py`, and `storage.py` imports from `api.py`). Python raises `ImportError: cannot import name '...' from partially initialized module`. Keep shared data classes in `domain.py` so both `api.py` and `storage.py` import downward from `domain.py`, never sideways from each other.
+- Naming a local file `logging.py`, `json.py`, `random.py`, or `sqlite3.py`. It shadows the Python standard library module of the same name and breaks every library that tries to import it.
+- Unpinned dependencies without upper or lower bounds (`pandas` instead of `pandas>=2.0,<3.0`), which lets an overnight major version bump break a fresh deployment.
+
+<PyExercise id="w24-entrypoint-parse" initialCode="import tomllib&#10;&#10;PYPROJECT_TOML = &quot;&quot;&quot;&#10;[project]&#10;name = &quot;ops-console&quot;&#10;version = &quot;1.2.0&quot;&#10;&#10;[project.scripts]&#10;ops-scan = &quot;ops_console.cli:main&quot;&#10;ops-worker = &quot;ops_console.worker:run&quot;&#10;&quot;&quot;&quot;&#10;&#10;def parse_script_entrypoint(raw_toml: str, command: str) -&gt; tuple[str, str]:&#10;    &quot;&quot;&quot;Parse `raw_toml` with tomllib.loads and return (package_name, script_target) for `command` under [project.scripts].&quot;&quot;&quot;&#10;    # TODO&#10;    return ('', '')&#10;&#10;print(parse_script_entrypoint(PYPROJECT_TOML, 'ops-scan'))&#10;print(parse_script_entrypoint(PYPROJECT_TOML, 'ops-worker'))" expectedOutput="('ops-console', 'ops_console.cli:main')&#10;('ops-console', 'ops_console.worker:run')" />
+
+## Waypoint 3: Twelve-Factor Configuration and Graceful Shutdown
+
+A production service reads all environment-specific settings (database path, port, log level, API keys, rate-limit capacity) in one place at startup—a typed `Settings` dataclass loaded from environment variables with sensible defaults for local development and strict checks for production secrets.
+
+When a container orchestrator or supervisor restarts your service, it sends a termination signal (`SIGTERM` or `SIGINT`). Always wrap the lifecycle in a startup/shutdown context so in-flight jobs finish, open database connections commit and close cleanly, and the process exits with code `0`.
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Settings:
+    db_path: str
+    log_level: str
+    max_concurrency: int
+    webhook_secret: str
+
+    @classmethod
+    def from_env(cls, env: dict[str, str]) -> "Settings":
+        secret = env.get("OPS_WEBHOOK_SECRET", "").strip()
+        if not secret:
+            raise RuntimeError("Missing required env var: OPS_WEBHOOK_SECRET")
+        return cls(
+            db_path=env.get("OPS_DB_PATH", "ops.db"),
+            log_level=env.get("OPS_LOG_LEVEL", "INFO").upper(),
+            max_concurrency=int(env.get("OPS_MAX_CONCURRENCY", "10")),
+            webhook_secret=secret,
+        )
+
+cfg = Settings.from_env({"OPS_WEBHOOK_SECRET": "whsec_live_99", "OPS_MAX_CONCURRENCY": "25"})
+print(cfg.db_path, cfg.log_level, cfg.max_concurrency)
+```
+
+<PyExercise id="w24-settings-loader" initialCode="def load_port(env: dict[str, str], default: int = 8000) -&gt; int:&#10;    &quot;&quot;&quot;Read PORT from `env` (or use `default`), convert to int, and raise ValueError unless 1 &lt;= port &lt;= 65535.&quot;&quot;&quot;&#10;    # TODO&#10;    return 0&#10;&#10;results = []&#10;for case in [&#123;'PORT': '9090'&#125;, &#123;&#125;, &#123;'PORT': '0'&#125;, &#123;'PORT': '70000'&#125;]:&#10;    try:&#10;        results.append(str(load_port(case)))&#10;    except ValueError:&#10;        results.append('ERR')&#10;print(' '.join(results))" expectedOutput="9090 8000 ERR ERR" />
+
+## Waypoint 4: The End-to-End Release Gate
+
+Before any commit merges or deploys, an automated Continuous Integration (CI) gate runs three fast checks in a clean environment:
+1. **Linter & Formatter** (`ruff check .`): catches unused imports, shadowed names, and syntax mistakes in milliseconds.
+2. **Type Checker** (`mypy .` or `pyright`): verifies that every function call and return type matches your Week 14 type annotations without running a single line against production.
+3. **Test Suite** (`pytest`): runs your unit, fixture, parameterized, and round-trip tests against `:memory:` SQLite and fakes.
+
+Below is the complete miniature pipeline uniting the core patterns from all twenty-four weeks: validated domain models, indexed SQLite persistence, structured logging, and a self-testing verification check.
+
+```python
+import json
+import sqlite3
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class HostRecord:
+    hostname: str
+    used_gb: float
+    limit_gb: float = 100.0
+
+    def __post_init__(self) -> None:
+        if not self.hostname.strip() or self.limit_gb <= 0 or self.used_gb < 0:
+            raise ValueError("Invalid HostRecord")
+
+    @property
+    def percent(self) -> float:
+        return (self.used_gb / self.limit_gb) * 100.0
+
+    @property
+    def status(self) -> str:
+        return "OVER LIMIT" if self.percent >= 100.0 else "WARNING" if self.percent >= 90.0 else "OK"
+
+def ingest_batch(conn: sqlite3.Connection, raw_lines: list[str]) -> dict[str, int]:
+    with conn:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS records (hostname TEXT PRIMARY KEY, pct REAL, status TEXT)"
+        )
+        for line in raw_lines:
+            host, used, limit = line.strip().split(",")
+            rec = HostRecord(host.strip().lower(), float(used), float(limit))
+            conn.execute(
+                "INSERT OR REPLACE INTO records VALUES (?, ?, ?)",
+                (rec.hostname, rec.percent, rec.status),
+            )
+    rows = conn.execute("SELECT status, COUNT(*) FROM records GROUP BY status").fetchall()
+    return dict(rows)
+
+conn = sqlite3.connect(":memory:")
+summary = ingest_batch(conn, ["SRV-01,85,100", "SRV-02,95,100", "SRV-03,120,100"])
+print(json.dumps(summary, sort_keys=True))
+```
+
+## The Debrief
+
+Twenty-four weeks ago you had two numbers on a sticky note and `print()` in a three-line file. Since then you built loops, functions, modules, file loaders, classes, pandas pipelines, string and regex parsers, API clients, bcrypt authentication, SQLite schemas, a rerun-driven dashboard, a real LLM API call, a `pathlib` and `argparse` CLI, validated dataclasses, a FastAPI service, concurrent `asyncio` sweeps, constant-memory generators, `@retry` decorators, structured observability, idempotent worker queues, indexed transactions, HMAC security gates, parameterized fixtures, and an installable Python package. You are no longer writing throwaway scripts to survive a 3 AM alert—you are engineering software that keeps the whole platform standing.

@@ -1,0 +1,186 @@
+---
+id: "week-23-advanced-testing-and-fixtures"
+title: "Testing: Fixtures and Mocks"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+Week 12 gave you `test_` functions and `MagicMock`, and your test file now has forty functions that each copy-paste the same ten lines of SQLite setup. Worse, when a mock drifts out of sync with the real schema, every mocked test stays green while production crashes on a missing column. Tonight you replace the boilerplate with **fixtures**, collapse repeated boundary tests into a **parameterized table**, and prove an invariant instead of one lucky example.
+
+## Waypoint 1: Fixtures Set Up and Tear Down Cleanly
+
+Whenever five tests need a fresh `:memory:` database or a temporary directory that cleans itself up, do not repeat the setup in every function and do not share a global mutable object across tests.
+
+In `pytest`, a function decorated with `@pytest.fixture` builds a resource for each test that asks for it **by parameter name**. A fixture that uses `yield` hands the resource to the test, then runs everything after `yield` once the test finishes, whether it passed or failed. That is the same cleanup contract as Week 18's `yield`, applied by the test runner instead of a `with` block.
+
+```python nonRunnable=true reason="pytest collects these test functions; run pytest -q in your project directory."
+import sqlite3
+import pytest
+
+@pytest.fixture
+def db():
+    """Fresh in-memory database per test, closed after the test."""
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE hosts (name TEXT PRIMARY KEY, pct REAL)")
+    conn.execute("INSERT INTO hosts VALUES ('srv-01', 88.0)")
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+def test_insert_does_not_leak(db):
+    db.execute("INSERT INTO hosts VALUES ('srv-02', 99.0)")
+    assert db.execute("SELECT COUNT(*) FROM hosts").fetchone()[0] == 2
+
+def test_starts_clean_again(db):
+    assert db.execute("SELECT COUNT(*) FROM hosts").fetchone()[0] == 1
+```
+
+Run `pytest -q` and both tests pass independently, in either order. Each one received its own `db`; neither can see the other's insert. That independence is the point of a fixture, not the saved typing.
+
+`pytest` also ships `tmp_path`, a fixture that hands every test its own isolated `pathlib.Path` directory, so file-writing tests never collide.
+
+<PyExercise id="w23-isolated-fixture" initialCode="def make_store() -&gt; dict[str, float]:&#10;    return &#123;'srv-01': 85.0&#125;&#10;&#10;def test_one(store: dict[str, float]) -&gt; int:&#10;    store['srv-02'] = 102.0&#10;    return len(store)&#10;&#10;def test_two(store: dict[str, float]) -&gt; int:&#10;    return len(store)&#10;&#10;def run_isolated_suite() -&gt; tuple[int, int]:&#10;    &quot;&quot;&quot;Run test_one and test_two against isolated store fixtures and return both lengths.&quot;&quot;&quot;&#10;    # TODO&#10;    shared = make_store()&#10;    return test_one(shared), test_two(shared)&#10;&#10;print(*run_isolated_suite())" expectedOutput="2 1" />
+
+### Watch out: The Trap
+
+- Sharing a module-level database or dictionary across tests. Test B passes after Test A and fails when run alone (`pytest -k test_b`). Every test must own its state.
+- Creating the fixture but not yielding. A `return`-only fixture never runs its cleanup, and the file handle or connection leaks after the first failure.
+- Using `scope="module"` for mutable state. One test's insert is now the next test's starting data, and the order of the test file starts to matter.
+
+## Waypoint 2: One Test Function, Ten Boundary Cases
+
+Six nearly identical test functions (`test_below_warn`, `test_at_warn`, `test_above_warn`, `test_at_limit`, `test_negative`, `test_zero`) invite copy-paste fatigue, and the fifth and sixth cases are the ones people skip.
+
+`@pytest.mark.parametrize` separates the table of inputs and expected outputs from the assertion. Add a row to test a new edge; each row is collected and reported as its own test, so a failure names the case that broke instead of the whole table.
+
+```python nonRunnable=true reason="pytest collects these test functions; run pytest -q in your project directory."
+import pytest
+
+def classify_disk(pct: float) -> str:
+    if pct < 0:
+        raise ValueError("pct cannot be negative")
+    if pct >= 100.0:
+        return "OVER LIMIT"
+    if pct >= 90.0:
+        return "WARNING"
+    return "OK"
+
+@pytest.mark.parametrize("pct, expected", [
+    (0.0, "OK"),
+    (89.9, "OK"),
+    (90.0, "WARNING"),
+    (99.9, "WARNING"),
+    (100.0, "OVER LIMIT"),
+    (135.0, "OVER LIMIT"),
+])
+def test_classify_disk(pct, expected):
+    assert classify_disk(pct) == expected
+```
+
+`pytest -q` reports six tests, not one. Break the `>= 100.0` into `> 100.0` and exactly one row goes red, naming `100.0` in the failure. A `for` loop over the same list stops at the first failure and tells you only that "the loop failed".
+
+For the negative case, `pytest.raises` is the assertion: it fails if the call returns normally.
+
+```python nonRunnable=true reason="pytest collects these test functions; run pytest -q in your project directory."
+def test_negative_raises():
+    with pytest.raises(ValueError):
+        classify_disk(-1.0)
+```
+
+<PyExercise id="w23-assert-raises" initialCode="def require_positive(limit: float) -&gt; float:&#10;    if limit &lt;= 0:&#10;        raise ValueError('limit must be &gt; 0')&#10;    return limit&#10;&#10;def check_raises_value_error(fn, arg: float) -&gt; bool:&#10;    &quot;&quot;&quot;Call fn(arg); return True only if it raised ValueError, and False if it returned normally.&quot;&quot;&quot;&#10;    # TODO&#10;    return False&#10;&#10;print(check_raises_value_error(require_positive, -5), check_raises_value_error(require_positive, 10))" expectedOutput="True False" />
+
+### Watch out: The Trap
+
+- Catching `ValueError` with `except ValueError: pass` when the function might not raise. If it silently returns `None`, the `try` finishes normally and the test passes by mistake. Use `pytest.raises` or an explicit flag.
+- A parameter list that only covers the happy path. The bug at exactly `100.0` survives because every row used `150.0`.
+- Mutating the parameter list inside the test. The next row now runs against different data, and collection order becomes part of the result.
+
+## Waypoint 3: Verified Fakes Over Brittle Mocks
+
+In Week 12 you used `MagicMock()` to fake an external client. `MagicMock` is convenient, but by default it accepts *any* method name and *any* argument typo (`client.chat.completins.creat()`) without raising.
+
+When mocking, pass `autospec=True` (or `Mock(spec=RealClient)`) so a misspelled method or wrong parameter raises `AttributeError` or `TypeError` immediately. Better for storage and gateways: write a tiny in-memory **Fake** that implements the same `.save()` and `.get()` methods as the real repository. A mock checks how it was called; a Fake checks that what you stored can actually be read back.
+
+```python
+class FakeAlertGateway:
+    def __init__(self) -> None:
+        self.outbox: list[tuple[str, str]] = []
+
+    def send(self, host: str, message: str) -> bool:
+        if not host or not message:
+            raise ValueError("host and message are required")
+        self.outbox.append((host, message))
+        return True
+
+def notify_if_over(gateway: FakeAlertGateway, host: str, pct: float) -> None:
+    if pct >= 100.0:
+        gateway.send(host, f"Disk at {pct:.1f}%")
+
+fake = FakeAlertGateway()
+notify_if_over(fake, "srv-01", 85.0)
+notify_if_over(fake, "srv-02", 104.5)
+print(fake.outbox)
+```
+
+The test asserts on the Fake's real state, not on call history:
+
+```python nonRunnable=true reason="pytest collects these test functions; run pytest -q in your project directory."
+def test_only_over_limit_is_sent():
+    gateway = FakeAlertGateway()
+    notify_if_over(gateway, "srv-01", 85.0)
+    notify_if_over(gateway, "srv-02", 104.5)
+    assert gateway.outbox == [("srv-02", "Disk at 104.5%")]
+```
+
+<PyExercise id="w23-fake-gateway" initialCode="class FakeStore:&#10;    &quot;&quot;&quot;In-memory fake repository that validates inputs and stores host percentages.&quot;&quot;&quot;&#10;&#10;    def __init__(self) -&gt; None:&#10;        self.rows: dict[str, float] = &#123;&#125;&#10;&#10;    def save(self, host: str, pct: float) -&gt; None:&#10;        &quot;&quot;&quot;Raise ValueError if host is empty or pct &lt; 0; otherwise store pct under host.&quot;&quot;&quot;&#10;        # TODO&#10;        pass&#10;&#10;    def get(self, host: str) -&gt; float | None:&#10;        &quot;&quot;&quot;Return the stored percentage for host, or None if missing.&quot;&quot;&quot;&#10;        # TODO&#10;        return None&#10;&#10;store = FakeStore()&#10;store.save('srv-07', 98.5)&#10;try:&#10;    store.save('', -1.0)&#10;    rejected = False&#10;except ValueError:&#10;    rejected = True&#10;print(store.get('srv-07'), store.get('missing'), rejected)" expectedOutput="98.5 None True" />
+
+### Watch out: The Trap
+
+- A mock method with no `spec`/`autospec`. The typo passes, the test is green, and the real client rejects the call in production.
+- A Fake that stores values but never validates them. It now accepts payloads the real repository rejects, which is the drift you were trying to catch.
+- Asserting `send.assert_called_once()` on a Fake. Fakes are state-based; assert on what is in the outbox, not on a call counter the Fake does not have.
+
+## Waypoint 4: Testing Properties and Round-Trip Invariants
+
+Example-based tests check the numbers you thought of (`89.9`, `90.0`, `100.0`). An **invariant** is a property that must hold for every valid input:
+- **Round-trip**: `parse_record(format_record(host, pct))` equals the record at wire precision.
+- **Idempotence**: `normalise(normalise(s)) == normalise(s)` for any string.
+- **Bounds**: `0.0 <= clamp_pct(x) <= 100.0` for any float.
+
+Parametrize the invariant over a wide sweep of inputs, including the ones you would not type by hand: whitespace, empty strings, extreme floats, unicode.
+
+```python nonRunnable=true reason="pytest collects these test functions; run pytest -q in your project directory."
+import pytest
+
+def format_record(host: str, pct: float) -> str:
+    return f"{host.strip().lower()},{pct:.2f}"
+
+def parse_record(line: str) -> tuple[str, float]:
+    host, pct_str = line.strip().split(",", 1)
+    return host.strip().lower(), round(float(pct_str), 2)
+
+@pytest.mark.parametrize("host, pct", [
+    ("srv-01", 0.0),
+    ("SRV-09", 99.95),
+    ("edge-node-eu", 100.0),
+    ("db-replica", 142.336),
+    ("  spaced-host  ", 7.125),
+])
+def test_round_trip(host, pct):
+    wire = format_record(host, pct)
+    assert parse_record(wire) == (host.strip().lower(), round(pct, 2))
+```
+
+The `spaced-host` row is the point. It is the case a hand-written example usually misses, and the invariant catches it without a new test function.
+
+### Watch out: The Trap
+
+- Asserting exact float equality on a lossy wire format. `format_record("db-replica", 142.336)` writes `"142.34"`, so compare at the format's precision (`round(pct, 2)`) or use `pytest.approx(pct, abs=0.01)`.
+- Writing a property test that only generates valid inputs and never the boundaries. Include the empty string, the maximum, and the value just past it.
+- Treating a hand-rolled `for` loop as a suite. It stops at the first failure and reports one line; `pytest` reports every failing row.
+
+## The Debrief
+
+The suite is no longer forty copies of one setup block. Fixtures build and tear down a fresh resource per test, parameterized tables exercise every threshold as its own collected test, verified Fakes catch interface drift that permissive mocks hide, and round-trip invariants prove the parser and the formatter agree. Next week, the last one, packages the toolkit into an installable distribution with `pyproject.toml` and the same tests as an automated gate.

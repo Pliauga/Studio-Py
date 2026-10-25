@@ -1,0 +1,159 @@
+---
+id: "week-08-pulling-real-data"
+title: "Web APIs and JSON"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+Everything you have loaded so far was already on disk. Tonight the fleet inventory is a CSV on someone else's web server, and the incident metadata sits behind an API that answers in JSON. You cannot `open()` either one. You have to **ask** for it, and the answer might be a 404, a timeout, or a field that vanished since yesterday.
+
+## Waypoint 1: Ask, Then Read the Answer
+
+A GET request sends a URL to a service and gets a response back. The response carries a **status code** before it carries any data: 200s mean fine, 400s mean you got something wrong, 500s mean the service did. Read the code before you trust the body.
+
+The response object is not the data. It is not subscriptable, so `response["login"]` raises `TypeError`. Call `.json()` and you get ordinary Python: a dict, or a list of dicts, exactly the shapes Week 4 taught.
+
+```python nonRunnable=true reason="Requires live external network access to api.github.com"
+import requests
+
+response = requests.get("https://api.github.com/orgs/python", timeout=10)
+print(response.status_code)          # 200
+
+data = response.json()
+print(data["login"], data["public_repos"])
+```
+
+```python
+import json
+
+raw_json = '{"login": "python", "public_repos": 160}'
+data = json.loads(raw_json)
+print(data["login"], data["public_repos"])
+```
+
+## Waypoint 2: Be Specific, and Be Impatient
+
+The `params` dict becomes `?key=value` on the URL for you. Hand-building the query string works until it does not.
+
+`timeout=10` is not optional. Without it a dead server can hang your script forever, and nobody notices until the on-call phone rings. A timeout is not proof the service is down either, only that it stopped answering in time. Log the URL you tried, because the next person will ask.
+
+Fields go missing. An API changes shape, or you mistype a key, and indexing raises `KeyError`. `data.get(key, "missing")` returns a fallback instead of killing the run.
+
+```python nonRunnable=true reason="Requires live external network access to api.github.com"
+import requests
+
+response = requests.get(
+    "https://api.github.com/orgs/python/repos",
+    params={"per_page": 3, "sort": "updated"},
+    timeout=10,
+)
+for repo in response.json():
+    print(repo["name"], repo["open_issues_count"])
+
+data = requests.get("https://api.github.com/orgs/python", timeout=10).json()
+print(data.get("repo_count", "missing"))
+```
+
+```python
+payload = [
+    {"name": "srv-01", "open_issues_count": 2},
+    {"name": "srv-02", "open_issues_count": 0},
+]
+for repo in payload:
+    print(repo["name"], repo["open_issues_count"])
+
+org_data = {"login": "ops-fleet", "public_repos": 14}
+print(org_data.get("repo_count", "missing"))
+```
+
+### Watch out: The Trap
+
+- No `timeout=` means an indefinite hang. Always set one.
+- `response["login"]` raises `TypeError: 'Response' object is not subscriptable`. Call `.json()` first.
+- A key that is not in the JSON raises `KeyError`. Print the whole dict once and read the real field names, then use `.get(key, default)` only for genuinely optional fields.
+- Building the query string by hand works often enough to be dangerous. Let `requests` do it.
+
+<PyExercise id="w08-get-fallback" initialCode="data = dict(login='python', public_repos=160)&#10;repo_count = data['repo_count']  # TODO: this field may not exist - use a fallback&#10;print(repo_count)" expectedOutput="unknown" />
+
+## Waypoint 3: A File, Not a Page
+
+A `github.com/.../blob/...` URL serves a formatted web page. You want `raw.githubusercontent.com/...`, which serves the actual bytes. Fetching the blob URL and feeding it to pandas gives you HTML and a confusing parse error.
+
+The reliable route into pandas is `requests` plus `StringIO`: download the text, then let pandas read it as if it were a local file.
+
+Print the first hundred characters of `response.text` before parsing anything. If the output starts with an angle bracket, you downloaded a page and no parser will save you.
+
+`pd.read_csv(url)` is shorter and often works, but it uses your system's certificate store rather than the one bundled with `requests`, so it can fail with `SSL: CERTIFICATE_VERIFY_FAILED` on a machine where `requests.get()` on the same URL succeeds.
+
+```python nonRunnable=true reason="Requires live external network access to raw.githubusercontent.com"
+import requests
+import pandas as pd
+from io import StringIO
+
+url = "https://raw.githubusercontent.com/ops-org/fleet/main/servers.csv"
+response = requests.get(url, timeout=10)
+print(response.status_code)
+print(response.text[:100])
+```
+
+```python
+import pandas as pd
+from io import StringIO
+
+response_text = "hostname,region,used,total\nsrv-01,eu,87,100\nsrv-02,us,120,100\n"
+print(response_text[:100].strip())
+
+df = pd.read_csv(StringIO(response_text))
+print(df.head())
+print(len(df), "rows")
+```
+
+### Watch out: The Trap
+
+- Using the `blob` URL instead of `raw` gives you HTML, not data.
+- Passing `response.text` straight to `read_csv` raises `TypeError`. Wrap it in `StringIO`.
+- Kaggle is not one `requests.get()`. It needs an account, `pip install kaggle`, and a token, then `kaggle datasets download -d owner/name`.
+- A file you host in your own repo works exactly like the raw GitHub case. Nothing is special about who owns it.
+
+<PyExercise id="w08-stringio-rows" initialCode="import pandas as pd&#10;from io import StringIO&#10;csv_text = 'name,used\na,87\nb,120'&#10;df = pd.read_csv(csv_text)  # TODO: pandas needs this text wrapped as a file&#10;print(len(df))" expectedOutput="2" />
+
+## Waypoint 4: Find by Shape, Then Bundle It
+
+Week 7's methods need the exact text. An IP address is different every time, so you match its **shape** instead. A regex understands character classes and repetition, never meaning, which is why you test a new pattern against one line you know and one you do not. `re.search()` returns the first match or `None`, so check before calling `.group()`. `re.findall()` returns every match as a list. `re.sub()` replaces by pattern, which is how you redact anything that looks like an address.
+
+Parentheses mark a **capture group**, and `(?P<name>...)` names it so you stop counting brackets. `match.group(0)` is the whole match, numbered groups start at 1, and a named group is worth the extra characters in a parser you will read again in six months. Then, when fetching, parsing and classifying pile up, bundle them into one class: state in `__init__`, methods that read `self`.
+
+```python
+import re
+
+line = "2026-09-08 ERROR connection from 10.0.0.5"
+match = re.search(r"(?P<date>\d{4}-\d{2}-\d{2}) (?P<level>\w+)", line)
+print(match.group("date"))
+print(match.group("level"))
+
+log = "attempts from 10.0.0.5 and 192.168.1.1 and 10.0.0.9"
+print(re.findall(r"\d+\.\d+\.\d+\.\d+", log))
+```
+
+```python
+class RecordSource:
+    """Parses raw lines and tracks how many are over limit."""
+
+    def __init__(self, limit=100):
+        self.limit = limit
+        self.over_limit_count = 0
+
+    def parse_line(self, raw_line):
+        label, value = raw_line.strip().split(",")
+        return {"label": label.strip().lower(), "value": float(value)}
+
+    def status_of(self, value):
+        return "OVER LIMIT" if value >= self.limit else "OK"
+```
+
+<PyExercise id="w08-regex-redact" initialCode="import re&#10;text = 'Server IP: 192.168.0.10, DNS: 8.8.8.8'&#10;redacted = text  # TODO: replace every IP-shaped run with [REDACTED]&#10;print(redacted)" expectedOutput="Server IP: [REDACTED], DNS: [REDACTED]" />
+
+## The Debrief
+
+The console now pulls its own inventory instead of waiting for someone to email a CSV. It checks the status code, survives a missing field, keeps the download impatient with a timeout, and redacts what it should not print. Next week it grows users, and auth becomes the perimeter.

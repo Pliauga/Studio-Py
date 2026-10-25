@@ -1,0 +1,81 @@
+---
+id: "week-00-setup-and-first-script"
+title: "Setup and the First Script"
+estimatedMinutes: 12
+---
+
+## The Hook
+
+It is 3:14 AM and the alert channel is already lit up: `srv-07` is at 96% and climbing. You open the terminal on your own laptop to check it, and the machine answers `command not found`. You cannot debug a server from a machine that has never run a line of Python.
+
+Before the platform, there is the machine in front of you. Twelve minutes from now it will have an interpreter, an editor, and one script that proves both are working.
+
+## Step 1: Install the Interpreter
+
+Python is the program that reads your `.py` file and executes it. Download the installer for your operating system from `python.org/downloads`; take the latest 3.x release, not a 2.x one.
+
+On Windows, the first installer screen has a checkbox labelled **Add python.exe to PATH**. Tick it before pressing Install. If you miss it, run the installer again, choose Modify, and add it. On macOS, run the `.pkg` installer and accept the default destination. Linux usually ships with Python 3 already installed.
+
+Open a terminal — **Terminal** on macOS or Linux, **PowerShell** on Windows — and ask the interpreter for its version:
+
+```bash
+python3 --version
+```
+
+On Windows the command is usually `python --version`. The reply should look like `Python 3.12.4`. Any 3.11 or newer is fine for this course.
+
+### Watch out: The Install
+
+- `command not found` after a successful install means the terminal was already open before the PATH changed. Close it, open a new one, try again.
+- `Python 2.7` is not the interpreter this course runs on. If `python --version` answers 2.7, use `python3`.
+- Do not install a stub from an app store. Use the official installer so the command and `pip` are real.
+
+## Step 2: Install an Editor That Understands Python
+
+A `.py` file is plain text. A word processor is the wrong tool: it inserts curly quotes and hidden formatting, and Python stops with `SyntaxError` on the first line it cannot parse.
+
+Install **Visual Studio Code** from `code.visualstudio.com`. It is free, and it treats the folder you open as a project instead of treating each file as a document. After it launches, open the Extensions panel and install Microsoft's **Python** extension; it gives you syntax colouring, error squiggles, and a terminal in the same window.
+
+Create a folder for the course, for example `ops-console`, and open that folder in VS Code. Add a file named `hello.py`. The `.py` extension is what tells the editor — and you — that this file is Python.
+
+## Step 3: Run the Script
+
+`print()` writes its argument to the terminal and starts a new line. Text inside quotes is a **string literal**: the quotes mark where the text starts and stops, and they are not printed. A call with no matching quote is a syntax error before anything runs.
+
+```python
+print("Hello, ops console")
+```
+
+Save the file. Open the integrated terminal with **Ctrl+`** (**Cmd+`** on macOS) and run it by name:
+
+```bash
+python3 hello.py
+```
+
+On Windows, use `python hello.py`. The terminal should answer:
+
+```text
+Hello, ops console
+```
+
+That is the whole loop: edit the file, save it, run it, read what came back. Every later week is the same loop with more interesting files.
+
+### Watch out: The First Run
+
+- `can't open file 'hello.py'` means the terminal is in a different folder. Run `pwd` (macOS/Linux) or `cd` (Windows) to see where you are, then `cd` into `ops-console`.
+- `print(hello)` without quotes asks Python for a variable named `hello`. It has never been assigned, so the answer is `NameError`, not the word.
+- A missing closing quote, or a curly quote from a word processor, raises `SyntaxError` before the first line executes.
+
+## Step 4: Prove the Machine Is Ready
+
+Reading about setup is not setup. The console below runs Python in your browser, so it can prove the language works; running the same code in your own terminal proves your installation works. Do both.
+
+The scaffold prints a placeholder. Replace it so the program prints the confirmation phrase named in the comment, run it here, then save the same two lines into `hello.py` and run them locally.
+
+<PyExercise id="w00-environment-ready" initialCode="# TODO: replace 'not ready yet' so this prints: Environment Ready&#10;print('not ready yet')" expectedOutput="Environment Ready" />
+
+If both consoles answer with the confirmation line, the toolchain is complete: interpreter, editor, and a file that runs. That is the baseline every later lesson assumes.
+
+## The Debrief
+
+The servers can wait another twelve minutes. Your machine now has an interpreter, an editor that saves plain text, and one script that goes from file to terminal and back. Next week you hold two numbers, divide them without lying about their types, and print a status line worth pasting into the incident ticket.

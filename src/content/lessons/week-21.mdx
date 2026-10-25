@@ -1,0 +1,139 @@
+---
+id: "week-21-database-indexing-and-transactions"
+title: "Database Indexing and Caching"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+`ops.db` worked fine in Week 10 when it held fifty rows. Six months later the `readings` table has two million rows, every dashboard refresh takes four seconds, and a partial crash during a regional migration left half the hosts updated and the other half orphaned. You do not need a bigger server yet. You need **indexes** so SQLite stops scanning two million rows to find one hostname, **atomic transactions** so multi-step updates succeed or roll back as one unit, and **TTL caching** for read-heavy queries.
+
+## Waypoint 1: Full Table Scans vs. B-Tree Indexes
+
+When you run `SELECT * FROM readings WHERE hostname = 'srv-07'` on an unindexed table, SQLite performs a **full table scan**: it reads every single row from first to last to check if `hostname` matches. Double the rows, double the wait.
+
+An **index** (`CREATE INDEX IF NOT EXISTS idx_readings_host ON readings(hostname)`) builds a sorted lookup tree alongside the table. You can ask SQLite how it plans to execute any query before running it in production by prefixing the statement with `EXPLAIN QUERY PLAN`. Look for `SEARCH readings USING INDEX` instead of `SCAN readings`.
+
+```python
+import sqlite3
+
+conn = sqlite3.connect(":memory:")
+conn.execute("CREATE TABLE readings (id INTEGER PRIMARY KEY, hostname TEXT, pct REAL)")
+
+plan_before = conn.execute(
+    "EXPLAIN QUERY PLAN SELECT pct FROM readings WHERE hostname = ?", ("srv-01",)
+).fetchall()
+print("Before index:", plan_before[0][-1])
+
+conn.execute("CREATE INDEX IF NOT EXISTS idx_readings_hostname ON readings(hostname)")
+
+plan_after = conn.execute(
+    "EXPLAIN QUERY PLAN SELECT pct FROM readings WHERE hostname = ?", ("srv-01",)
+).fetchall()
+print("After index:", plan_after[0][-1])
+```
+
+<PyExercise id="w21-explain-index" initialCode="import sqlite3&#10;&#10;def ensure_region_index(conn: sqlite3.Connection) -&gt; None:&#10;    &quot;&quot;&quot;Create a B-tree index on alerts(region) so region lookups avoid a full table scan.&quot;&quot;&quot;&#10;    # TODO&#10;    pass&#10;&#10;conn = sqlite3.connect(':memory:')&#10;conn.execute('CREATE TABLE alerts (id INTEGER PRIMARY KEY, region TEXT, host TEXT)')&#10;ensure_region_index(conn)&#10;plan = conn.execute('EXPLAIN QUERY PLAN SELECT host FROM alerts WHERE region = ?', ('eu',)).fetchall()&#10;print('INDEX' in plan[0][-1])" expectedOutput="True" />
+
+## Waypoint 2: Atomic Transactions—All or Nothing
+
+Suppose decommissioning a host requires two SQL statements: archiving its row into `decommissioned_hosts` and deleting it from `active_hosts`. If an exception or power loss happens between statement 1 and statement 2, the host exists in both tables and your inventory counts are wrong.
+
+A **transaction** groups multiple statements into a single atomic unit. In `sqlite3`, entering `with conn:` starts or manages a transaction: if the block finishes cleanly, `conn` commits both changes at once; if *any* line inside the `with conn:` block raises an exception, `conn` automatically rolls back every statement in that block as if none of them ever ran.
+
+```python
+import sqlite3
+
+conn = sqlite3.connect(":memory:")
+conn.execute("CREATE TABLE active_hosts (hostname TEXT PRIMARY KEY)")
+conn.execute("CREATE TABLE archived_hosts (hostname TEXT PRIMARY KEY)")
+conn.execute("INSERT INTO active_hosts VALUES ('srv-01')")
+conn.commit()
+
+try:
+    with conn:
+        conn.execute("DELETE FROM active_hosts WHERE hostname = ?", ("srv-01",))
+        raise RuntimeError("disk error before archive completed")
+        conn.execute("INSERT INTO archived_hosts VALUES (?)", ("srv-01",))
+except RuntimeError:
+    pass
+
+remaining = conn.execute("SELECT hostname FROM active_hosts").fetchall()
+print("Still active after rollback:", remaining)   # [('srv-01',)]
+```
+
+### Watch out: The Trap
+
+- Calling `conn.commit()` manually after every single statement inside a multi-step update. Once committed, a later exception in the block cannot roll back the earlier statement. Let the `with conn:` block commit once at the end.
+- Creating an index on every column "just in case". Every index speeds up matching `SELECT` queries but slows down every `INSERT`, `UPDATE`, and `DELETE` because SQLite must update all those index trees on every write. Index the columns you actually filter (`WHERE`), join (`ON`), or sort (`ORDER BY`) by.
+- Wrapping `LOWER(hostname) = 'srv-01'` in the `WHERE` clause when the index is on `hostname`. Applying a function to the column prevents a standard column index from being used; normalize strings to lowercase before inserting them.
+
+<PyExercise id="w21-atomic-transfer" initialCode="import sqlite3&#10;&#10;conn = sqlite3.connect(':memory:')&#10;conn.execute('CREATE TABLE quotas (team TEXT PRIMARY KEY, credits INTEGER CHECK(credits &gt;= 0))')&#10;conn.executemany('INSERT INTO quotas VALUES (?, ?)', [('ops', 10), ('dev', 5)])&#10;conn.commit()&#10;&#10;def transfer(conn: sqlite3.Connection, src: str, dst: str, amount: int) -&gt; None:&#10;    &quot;&quot;&quot;Atomically add `amount` credits to `dst` and deduct `amount` from `src`, rolling back both on IntegrityError.&quot;&quot;&quot;&#10;    try:&#10;        # TODO&#10;        conn.execute('UPDATE quotas SET credits = credits + ? WHERE team = ?', (amount, dst))&#10;        conn.execute('UPDATE quotas SET credits = credits - ? WHERE team = ?', (amount, src))&#10;    except sqlite3.IntegrityError:&#10;        pass&#10;&#10;transfer(conn, 'ops', 'dev', 50)&#10;print(conn.execute('SELECT team, credits FROM quotas ORDER BY team').fetchall())" expectedOutput="[('dev', 5), ('ops', 10)]" />
+
+## Waypoint 3: Eliminating the N+1 Query Problem
+
+The **N+1 query bug** is the most common performance killer in database-backed apps. First you run `1` query to fetch `N` active devices (`SELECT id, name FROM devices`). Then, inside a `for` loop over those `N` devices, you run another `SELECT` query per device to get its latest alert count. For 500 devices, your page executes **501 separate database queries**.
+
+Replace the loop of queries with a single `LEFT JOIN` and `GROUP BY` (or a `WHERE device_id IN (...)` query) so the database computes and returns all 500 counts in **1 query**.
+
+```python
+import sqlite3
+
+conn = sqlite3.connect(":memory:")
+conn.execute("CREATE TABLE devices (id INTEGER PRIMARY KEY, name TEXT)")
+conn.execute("CREATE TABLE alerts (id INTEGER PRIMARY KEY, device_id INTEGER)")
+conn.executemany("INSERT INTO devices VALUES (?, ?)", [(1, "srv-01"), (2, "srv-02"), (3, "srv-03")])
+conn.executemany("INSERT INTO alerts VALUES (?, ?)", [(10, 1), (11, 1), (12, 3)])
+
+rows = conn.execute(
+    """
+    SELECT d.name, COUNT(a.id) AS alert_count
+    FROM devices d
+    LEFT JOIN alerts a ON a.device_id = d.id
+    GROUP BY d.id, d.name
+    ORDER BY d.name
+    """
+).fetchall()
+print(rows)   # [('srv-01', 2), ('srv-02', 0), ('srv-03', 1)] in ONE query
+```
+
+<PyExercise id="w21-left-join-counts" initialCode="import sqlite3&#10;&#10;def incident_counts_by_host(conn: sqlite3.Connection) -&gt; list[tuple[str, int]]:&#10;    &quot;&quot;&quot;Return (host_name, incident_count) for every host in `hosts`, including hosts with 0 incidents, ordered by name.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;conn = sqlite3.connect(':memory:')&#10;conn.execute('CREATE TABLE hosts (name TEXT PRIMARY KEY)')&#10;conn.execute('CREATE TABLE incidents (host_name TEXT)')&#10;conn.executemany('INSERT INTO hosts VALUES (?)', [('srv-01',), ('srv-02',)])&#10;conn.executemany('INSERT INTO incidents VALUES (?)', [('srv-01',), ('srv-01',)])&#10;print(incident_counts_by_host(conn))" expectedOutput="[('srv-01', 2), ('srv-02', 0)]" />
+
+## Waypoint 4: Time-To-Live (TTL) Caching for Hot Reads
+
+Week 18's `@lru_cache` caches function results forever, which is ideal for static config and wrong for a fleet summary that changes every minute. A **Time-To-Live (TTL) cache** stores each entry alongside an expiration timestamp (`now + ttl_seconds`).
+
+While the entry is fresh (`now < expires_at`), reads return the cached value in microseconds; once the TTL expires, the next read fetches fresh data from the database and resets the timer. Always provide an explicit `.invalidate(key)` method so a write endpoint can evict stale entries immediately when a host updates.
+
+```python
+import time
+
+class TTLCache:
+    def __init__(self, ttl_seconds: float = 30.0) -> None:
+        self.ttl = ttl_seconds
+        self._store: dict[str, tuple[float, object]] = {}
+
+    def get(self, key: str, now: float | None = None):
+        current = time.monotonic() if now is None else now
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        expires_at, value = entry
+        if current >= expires_at:
+            del self._store[key]
+            return None
+        return value
+
+    def set(self, key: str, value: object, now: float | None = None) -> None:
+        current = time.monotonic() if now is None else now
+        self._store[key] = (current + self.ttl, value)
+
+cache = TTLCache(ttl_seconds=10.0)
+cache.set("summary", {"over_limit": 2}, now=100.0)
+print(cache.get("summary", now=105.0))   # hit
+print(cache.get("summary", now=115.0))   # None (expired at 110.0)
+```
+
+## The Debrief
+
+Two million rows no longer bring the console to its knees. `EXPLAIN QUERY PLAN` verifies that lookups hit B-tree indexes, `with conn:` guarantees multi-statement updates commit or roll back atomically, `LEFT JOIN` collapses N+1 query loops into one round-trip, and a `TTLCache` absorbs repeated dashboard reads without serving stale data forever. Next week we harden the API perimeter against forged tokens, brute-force floods, and injection attacks.

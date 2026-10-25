@@ -1,0 +1,151 @@
+---
+id: "week-18-decorators-and-context-managers"
+title: "Decorators and Context Managers"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+Every network call in your ops toolkit needs retry logic when a switch blips, timing logs when an endpoint slows down, and guaranteed cleanup when a temporary lockfile or database transaction finishes. Pasting `try / except / time.sleep` and `start = time.perf_counter()` into twenty different functions makes the actual business logic impossible to read. Tonight you extract cross-cutting behavior into reusable **decorators** and **context managers**.
+
+## Waypoint 1: Functions Are Objects You Can Wrap
+
+In Python, a function is a value just like a string or a dictionary: you can pass a function as an argument to another function, and a function can define and return a brand-new function inside itself.
+
+A **decorator** is a function that takes a function `func`, wraps it in an inner `wrapper(*args, **kwargs)` function that adds behavior before or after calling `func(*args, **kwargs)`, and returns `wrapper`. Writing `@log_calls` above `def check_host(...)` is shorthand for `check_host = log_calls(check_host)`.
+
+Always decorate the inner `wrapper` with `@functools.wraps(func)` so the original function's `__name__` and docstring are preserved instead of every decorated function reporting its name as `"wrapper"`.
+
+```python
+import functools
+
+def trace_call(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"-> calling {func.__name__}")
+        result = func(*args, **kwargs)
+        print(f"<- {func.__name__} returned {result}")
+        return result
+    return wrapper
+
+@trace_call
+def compute_percent(used: float, limit: float) -> float:
+    """Calculate usage percentage."""
+    return (used / limit) * 100
+
+print(compute_percent(85.0, 100.0))
+print(compute_percent.__name__)   # compute_percent, preserved by @wraps
+```
+
+<PyExercise id="w18-basic-decorator" initialCode="import functools&#10;&#10;def clamp_percent(func):&#10;    &quot;&quot;&quot;Decorator that preserves func metadata and caps its float return value at 100.0.&quot;&quot;&quot;&#10;    # TODO&#10;    return func&#10;&#10;@clamp_percent&#10;def raw_pct(used: float, limit: float) -&gt; float:&#10;    return (used / limit) * 100&#10;&#10;print(raw_pct(125, 100), raw_pct(80, 100))" expectedOutput="100.0 80.0" />
+
+## Waypoint 2: Decorators That Take Arguments (Retries)
+
+What if one endpoint needs `@retry(attempts=3)` and another needs `@retry(attempts=5)`? A decorator with arguments adds one outer layer: `retry(attempts=3)` is a **decorator factory** that returns the actual `decorator(func)`, which in turn returns `wrapper(*args, **kwargs)`.
+
+Inside `wrapper`, loop up to `attempts` times. Catch only transient exceptions (like `ConnectionError` or `TimeoutError`, never `ValueError` or `KeyError` caused by a bug in your own code), and re-raise the final exception if all attempts fail.
+
+```python
+import functools
+
+def retry(attempts: int = 3):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_err = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except ConnectionError as exc:
+                    last_err = exc
+                    print(f"attempt {attempt}/{attempts} failed: {exc}")
+            raise last_err
+        return wrapper
+    return decorator
+
+calls = 0
+
+@retry(attempts=3)
+def flaky_ping(host: str) -> str:
+    global calls
+    calls += 1
+    if calls < 3:
+        raise ConnectionError("link flap")
+    return f"{host}: PONG"
+
+print(flaky_ping("srv-07"))
+```
+
+### Watch out: The Trap
+
+- Forgetting `return func(*args, **kwargs)` inside `wrapper`. Your decorated function runs its side effects and silently returns `None` to every caller.
+- Writing `@retry` without parentheses when `retry` is a decorator factory expecting `@retry()`. Calling `flaky_ping("srv-07")` then passes `"srv-07"` as `func` and crashes with `TypeError`.
+- Retrying on bare `except Exception:`. A typo raising `NameError` or a `401 Unauthorized` will never succeed on retry 2 or 3; retry only transient network/IO errors.
+
+<PyExercise id="w18-retry-counter" initialCode="import functools&#10;&#10;def retry(attempts: int = 3):&#10;    &quot;&quot;&quot;Decorator factory that retries `func` up to `attempts` times on ConnectionError before re-raising.&quot;&quot;&quot;&#10;    # TODO&#10;    def decorator(func):&#10;        return func&#10;    return decorator&#10;&#10;tries = 0&#10;&#10;@retry(attempts=3)&#10;def fetch(host: str) -&gt; str:&#10;    global tries&#10;    tries += 1&#10;    if tries &lt; 3:&#10;        raise ConnectionError('link flap')&#10;    return f'&#123;host&#125;:OK'&#10;&#10;print(fetch('srv-07'), fetch.__name__, tries)" expectedOutput="srv-07:OK fetch 3" />
+
+## Waypoint 3: Custom Context Managers with `@contextmanager`
+
+You have used `with open(...)` since Week 4 and `with sqlite3.connect(...)` since Week 10. Now you can build your own `with` blocks using `@contextlib.contextmanager`.
+
+Write a generator function with a single `yield`:
+1. Everything **before** `yield` runs when entering the `with` block (setup).
+2. The value you `yield` is bound to the `as target` variable.
+3. Everything **after** `yield` inside a `finally:` block runs when exiting the `with` block—even if an exception was raised inside the body.
+
+```python
+from contextlib import contextmanager
+
+@contextmanager
+def maintenance_mode(host: str, state: dict):
+    state[host] = "MAINTENANCE"
+    print(f"[{host}] entered maintenance")
+    try:
+        yield state
+    finally:
+        state[host] = "ACTIVE"
+        print(f"[{host}] restored to active")
+
+fleet_state = {"srv-01": "ACTIVE"}
+with maintenance_mode("srv-01", fleet_state):
+    print("During block:", fleet_state["srv-01"])
+print("After block:", fleet_state["srv-01"])
+```
+
+### Watch out: The Trap
+
+- Omitting `try: ... finally:` around `yield` in a `@contextmanager` function. If the code inside the `with` block raises an exception, Python injects that exception at the `yield` point and any cleanup lines below `yield` never execute unless they are inside `finally:`.
+- Yielding more than once inside `@contextmanager`, which raises `RuntimeError: generator didn't stop`. A context manager yields control to the `with` block exactly once.
+
+<PyExercise id="w18-contextmanager-cleanup" initialCode="from contextlib import contextmanager&#10;&#10;locks: set[str] = set()&#10;&#10;@contextmanager&#10;def host_lock(hostname: str):&#10;    &quot;&quot;&quot;Acquire `hostname` in `locks`, yield `hostname`, and guarantee removal from `locks` on exit.&quot;&quot;&quot;&#10;    # TODO&#10;    locks.add(hostname)&#10;    yield hostname&#10;&#10;try:&#10;    with host_lock('srv-01'):&#10;        raise ValueError('deploy failed')&#10;except ValueError:&#10;    pass&#10;print('Remaining locks:', len(locks))" expectedOutput="Remaining locks: 0" />
+
+## Waypoint 4: Memoization with `functools.lru_cache`
+
+When your scanner resolves host metadata or parses the same region config thousands of times during a run, re-computing the same pure function for the same arguments wastes time. `@functools.lru_cache(maxsize=128)` caches the return value keyed by the function's arguments.
+
+The first call with `("eu-west",)` executes the function and stores the result; the next thousand calls with `("eu-west",)` return the cached result immediately in `O(1)` dictionary lookup time. You can inspect `.cache_info()` to verify your hit rate or call `.cache_clear()` in tests to reset state.
+
+```python
+from functools import lru_cache
+
+lookup_calls = 0
+
+@lru_cache(maxsize=64)
+def resolve_region_threshold(region: str) -> float:
+    global lookup_calls
+    lookup_calls += 1
+    thresholds = {"eu": 90.0, "us": 95.0, "apac": 85.0}
+    return thresholds.get(region, 100.0)
+
+for r in ["eu", "us", "eu", "eu", "us"]:
+    resolve_region_threshold(r)
+
+print("Unique executions:", lookup_calls)   # 2, not 5
+print("Cache hits:", resolve_region_threshold.cache_info().hits)
+```
+
+<PyExercise id="w18-lru-cache-hits" initialCode="from functools import lru_cache&#10;&#10;runs = 0&#10;&#10;# TODO&#10;def parse_tag(raw: str) -&gt; str:&#10;    &quot;&quot;&quot;Normalize `raw` tag (strip and lowercase) with memoization across repeated calls.&quot;&quot;&quot;&#10;    global runs&#10;    runs += 1&#10;    return raw.strip().lower()&#10;&#10;for tag in ['EU', 'US', 'EU', 'EU', 'US']:&#10;    parse_tag(tag)&#10;print('runs:', runs)" expectedOutput="runs: 2" />
+
+## The Debrief
+
+Cross-cutting clutter is now out of your core functions. `@retry` handles transient blips, `@contextmanager` guarantees locks and resources are cleaned up via `try / finally`, `@functools.wraps` keeps function metadata intact, and `@lru_cache` eliminates redundant lookups. Next week we replace scattered `print()` calls with structured JSON logging and metrics so production incidents leave an audit trail machines can query.

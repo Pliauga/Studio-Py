@@ -1,0 +1,198 @@
+---
+id: "week-05-classes-and-objects"
+title: "Classes and Objects"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+You have a list of dicts and a loader that works. Then the on-call lead asks for `srv-07.status()` and you have to explain that the data and the logic that judges it live in two different places, so every caller has to remember the rules. A **class** puts them in one thing. A list of those things is the fleet.
+
+## Waypoint 1: The Blueprint and the Instance
+
+`class Record:` is a blueprint. It does not contain data, it describes where data will go. `__init__` fills in one particular **object** when it is created, and you never call it yourself: `Record("R-001", 87.0, 100.0)` runs it for you.
+
+The first parameter is `self`, always. `self` is this particular object, and Python passes it in so you never write it at the call site. `Record("R-001", 87.0, 100.0)` is closer to `Record.__init__(new_object, "R-001", 87.0, 100.0)` than to a normal function call.
+
+Two objects built from the same class share nothing. Change `r1.value` and `r2.value` is untouched, because each keeps its own copy of the attributes. Reaching that data is dot notation, no quotes and no square brackets, which is the visible difference from last week's dict.
+
+```python
+class Record:
+    def __init__(self, label, value, limit):
+        self.label = label
+        self.value = value
+        self.limit = limit
+
+r1 = Record("R-001", 87.0, 100.0)
+r2 = Record("R-002", 120.0, 100.0)
+print(r1.label, r1.value)
+print(r2.label, r2.value)
+
+record_dict = {"label": "R-001", "value": 87.0}
+print(record_dict["label"])   # string key
+print(r1.label)               # attribute
+```
+
+<PyExercise id="w05-init-attribute" initialCode="class Record:&#10;    def __init__(self, label, value, limit):&#10;        self.label = label&#10;        self.value = value&#10;        self.limit = value  # TODO: limit is not value&#10;&#10;r = Record('R-001', 87.0, 100.0)&#10;print(r.label, r.value, r.limit)" expectedOutput="R-001 87.0 100.0" />
+
+## Waypoint 2: Methods and the Key to Its Own Room
+
+A **method** is a function that lives inside a class. Its first parameter is `self`, and that is how it reaches the object's own attributes without being handed them again. `self` is whichever object made the call, so one method body serves the entire fleet.
+
+Methods call each other through `self`. `status()` asking `self.percent()` instead of recalculating keeps the percentage rule in exactly one place.
+
+And a method can change its own object's state, which week 3's functions could not. That is not a contradiction. The wall is still there, a method just holds the key to its own room: `self` is the object, not a copy of it. No `return` needed when the point was to update the object rather than report on it.
+
+```python
+class Record:
+    def __init__(self, label, value, limit):
+        self.label = label
+        self.value = value
+        self.limit = limit
+
+    def percent(self):
+        return (self.value / self.limit) * 100
+
+    def status(self):
+        p = self.percent()
+        if p >= 100:
+            return "OVER LIMIT"
+        elif p >= 90:
+            return "WARNING"
+        return "OK"
+
+r = Record("R-002", 95.0, 100.0)
+print(r.status())
+
+class Checker:
+    def __init__(self):
+        self.over_limit_count = 0
+
+    def check(self, value, limit):
+        if value > limit:
+            self.over_limit_count += 1
+
+c = Checker()
+c.check(120, 100)
+c.check(87, 100)
+print(c.over_limit_count)   # 1, changed without returning anything
+```
+
+### Watch out: The Trap
+
+- Forget `self` in `__init__` and every call raises `TypeError: __init__() takes 1 positional argument but 2 were given`.
+- Write `value = value` instead of `self.value = value` and the object stores nothing. The name on the left of the dot is the attribute.
+- Call `status()` without the object and you get a `NameError`. Methods belong to an instance: `r.status()`.
+- `Record.label` is an `AttributeError`. Attributes live on the object, not the blueprint.
+- A method's return updates nothing by itself. Either reassign the result or set `self.something` and know which one you meant.
+
+<PyExercise id="w05-method-status" initialCode="class Record:&#10;    def __init__(self, label, value, limit):&#10;        self.label = label&#10;        self.value = value&#10;        self.limit = limit&#10;&#10;    def percent(self):&#10;        return (self.value / self.limit) * 100&#10;&#10;    def status(self):&#10;        # TODO: call self.percent() and return 'OVER LIMIT' (&gt;=100), 'WARNING' (&gt;=90), or 'OK'&#10;        return 'OK'&#10;&#10;r_over = Record('R-001', 120.0, 100.0)&#10;r_warn = Record('R-002', 95.0, 100.0)&#10;r_ok = Record('R-003', 80.0, 100.0)&#10;print(r_over.status(), '|', r_warn.status(), '|', r_ok.status())" expectedOutput="OVER LIMIT | WARNING | OK" />
+
+### Watch it stack
+
+A stack is a list with one rule: last in, first out. `push` adds on top, `pop` takes the top one off, and both are methods because the list belongs to the object.
+
+The scene below is that object in the room. `stack_push(value)` drops a block into the container and `stack_pop()` ejects the top one. The `Stack` methods move the same items in Python, so the two must move together or the picture disagrees with the data. Run the exercise and three blocks fall in; then the top one comes back out.
+
+<div class="scene-split-layout">
+  <div class="scene-col">
+    <SandboxEmbed mode="stack" />
+  </div>
+  <div class="code-col">
+    <PyExercise id="w05-stack-push" initialCode="class Record:&#10;    def __init__(self, label, value, limit):&#10;        self.label = label&#10;        self.value = value&#10;        self.limit = limit&#10;&#10;    def percent(self):&#10;        return (self.value / self.limit) * 100&#10;&#10;    def status(self):&#10;        p = self.percent()&#10;        if p &gt;= 100:&#10;            return 'OVER LIMIT'&#10;        if p &gt;= 90:&#10;            return 'WARNING'&#10;        return 'OK'&#10;&#10;class Stack:&#10;    def __init__(self):&#10;        self.items = []&#10;&#10;    def push(self, value):&#10;        self.items.append(value)&#10;&#10;    def pop(self):&#10;        return self.items.pop()&#10;&#10;records = [&#10;    Record('R-001', 87.0, 100.0),&#10;    Record('R-002', 95.0, 100.0),&#10;    Record('R-003', 120.0, 100.0),&#10;]&#10;stack = Stack()&#10;&#10;# TODO: push each record's status onto the stack and call stack_push(status)&#10;# so a block drops into the scene. Then pop the top status, call stack_pop(),&#10;# and print stack.items followed by the popped status.&#10;&#10;print(stack.items)" expectedOutput="['OK', 'WARNING', 'OVER LIMIT']&#10;OVER LIMIT" />
+  </div>
+</div>
+
+## Waypoint 3: A List of Objects
+
+A list of objects has the same shape as last week's list of dicts, and one thing more: each item knows how to answer questions about itself. `records[0].label` is index in, then dot in. `records["label"]` is a `TypeError`, because a list is not a dict no matter how familiar the bracket looks.
+
+Looping is identical to the dict version. The difference is what happens inside: `record.status()` instead of recalculating the percentage at the call site, which means the rule now travels with the data.
+
+Loading is week 4's loader with one line changed. Build a `Record` inside the loop instead of a dict.
+
+```python
+class Record:
+    def __init__(self, label, value, limit):
+        self.label = label
+        self.value = value
+        self.limit = limit
+
+    def status(self):
+        percent = (self.value / self.limit) * 100
+        return "OVER LIMIT" if percent >= 100 else "OK"
+
+records = [
+    Record("R-001", 87.0, 100.0),
+    Record("R-002", 120.0, 100.0),
+]
+print(type(records))      # list
+print(type(records[0]))   # Record
+
+for record in records:
+    print(record.label, record.status())
+
+def load_records(path):
+    """Read label,value,limit lines and return a list of Records."""
+    records = []
+    with open(path) as f:
+        for line in f:
+            label, value, limit = line.strip().split(",")
+            records.append(Record(label, float(value), float(limit)))
+    return records
+```
+
+## Waypoint 4: Count Is a Query, Not a Side Effect
+
+A running total outside the loop is the right default. When the count belongs to the fleet as a whole, give it a function of its own: `count_over(records)` asks each record for its status and counts the answers. Reading an object must not write to it.
+
+The tempting shortcut is to increment a counter inside `status()`. Do not. A getter that changes state makes `r.status()` unsafe to call twice, and a report that prints the same record twice silently doubles the night's incident count.
+
+A **class attribute** is still useful for values every instance shares, like the warning threshold. It is not a place to accumulate per-call results.
+
+```python
+class Record:
+    warning_at = 90   # shared configuration, not a running total
+
+    def __init__(self, label, value, limit):
+        self.label = label
+        self.value = value
+        self.limit = limit
+
+    def percent(self):
+        return (self.value / self.limit) * 100
+
+    def status(self):
+        percent = self.percent()
+        if percent >= 100:
+            return "OVER LIMIT"
+        if percent >= self.warning_at:
+            return "WARNING"
+        return "OK"
+
+def count_over(records):
+    """Return how many records are over their limit. Calls no setter."""
+    return sum(1 for record in records if record.status() == "OVER LIMIT")
+
+fleet = [Record("R-001", 87.0, 100.0), Record("R-002", 120.0, 100.0)]
+for r in fleet:
+    print(r.label, r.status())
+print("over limit:", count_over(fleet))
+print("still two after a second read:", count_over(fleet))
+```
+
+### Watch out: The Trap
+
+- `self.over_limit_count += 1` inside a method reads the shared value, then writes a per-instance copy. The class attribute never moves.
+- Incrementing a counter inside a getter. Calling `status()` twice on the same record counts the same incident twice and raises nothing.
+- Building a `Record` with the arguments in the wrong order puts values on the wrong attributes and raises nothing. Match the `__init__` signature, or pass keywords.
+- `load_records` that forgets `return` gives you `None`, and the crash happens three lines later in whatever tried to loop over it.
+- `records["label"]` is a `TypeError`. A list of objects is not a dict.
+
+The exercise below keeps one class attribute on purpose: there the counter belongs to the type, and `check()` is an action, not a getter. The rule is about *where* the write happens, not about banning shared state.
+
+<PyExercise id="w05-class-counter" initialCode="class Checker:&#10;    over_limit_count = 0&#10;&#10;    def check(self, value, limit):&#10;        if value &gt; limit:&#10;            self.over_limit_count += 1  # TODO: this writes a per-instance copy&#10;&#10;c = Checker()&#10;c.check(120, 100)&#10;c.check(87, 100)&#10;c.check(150, 100)&#10;print(Checker.over_limit_count)" expectedOutput="2" />
+
+## The Debrief
+
+The fleet is now a list of objects, each one carrying its own numbers and the method that judges them, plus a query that counts the damage without changing it. `srv-07.status()` is a real sentence and it means something. Week 6 is where the export stops being a few hundred rows, and hand-rolled loops stop being the right tool.

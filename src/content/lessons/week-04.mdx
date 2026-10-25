@@ -1,0 +1,168 @@
+---
+id: "week-04-lists-dictionaries-and-files"
+title: "Lists, Dictionaries, and Files"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+The incident exported `records.txt`: one line per host, `label,value,limit`, and a few hundred of them. You need all of it in memory, addressable by field name instead of by guesswork, and you need the script to survive the file being absent at 4 AM. That is a list, a dictionary, and `open()`.
+
+## Waypoint 1: Position, Slices, and What Can Change
+
+A **list** holds many values in order. Index from `0`, or from the end with a negative number: `labels[-1]` is the last item whatever the length happens to be, so you never have to ask for `len(labels) - 1`.
+
+**Slicing** follows the same rule as `range`: start included, stop excluded. `values[1:3]` is two items, not three. That consistency is deliberate, and it is still the thing people get wrong at 3 AM.
+
+Lists are **mutable**, so assignment, `.append()`, and `.remove()` change the list in place. Strings and **tuples** are not. They index and slice identically and then refuse to be written to. A tuple is the right container for a record that must not drift, and it is what `return a, b` has been handing you since last week.
+
+A **list comprehension** builds a new list from an old one in a single expression, with an optional `if` to filter as it builds.
+
+```python
+labels = ["R-001", "R-002", "R-003"]
+print(labels[0])
+print(labels[-1])
+print(len(labels))
+
+values = [10, 20, 30, 40, 50]
+print(values[1:3])   # [20, 30]
+
+values[0] = 99
+values.append(60)
+values.remove(20)
+print(values)
+
+doubled = [v * 2 for v in values]
+big_values = [v for v in values if v >= 50]
+print(doubled)
+print(big_values)
+```
+
+<PyExercise id="w04-comprehension-filter" initialCode="values = [10, 20, 30, 40, 50]&#10;# TODO: use a list comprehension to keep only values of 40 or more&#10;big_values = [v for v in values]&#10;print(big_values)" expectedOutput="[40, 50]" />
+
+## Waypoint 2: Lookup by Name
+
+A **dictionary** maps keys to values. `record["label"]` reads one. Assignment does double duty: an existing key is updated, a missing key is added.
+
+`record["missing"]` raises `KeyError` and stops the program. `.get("missing")` returns `None` instead, and `.get("missing", "n/a")` gives you a fallback of your own. For a field that might not be in the export, that is the difference between a report and a traceback.
+
+`.items()` gives you the key and the value together, which is what you want nine times out of ten. Iterating a dict directly gives keys only.
+
+`zip()` pairs two lists element by element, and `dict(zip(keys, values))` builds a lookup table from columns that arrived separately. If the lists are different lengths it stops at the shorter one, silently.
+
+A **set** keeps only unique values. `set(labels)` drops duplicates, and membership testing is fast. `{}` is an empty dict, not an empty set; use `set()`.
+
+```python
+record = {"label": "R-001", "value": 87.0, "limit": 100.0}
+print(record["label"])
+record["status"] = "OK"
+print(record.get("missing", "n/a"))
+
+for key, value in record.items():
+    print(f"{key}: {value}")
+
+hostnames = ["srv-01", "srv-02", "srv-03"]
+disk_used = [87, 45, 120]
+usage = dict(zip(hostnames, disk_used))
+print(usage["srv-02"])
+
+labels = ["R-001", "R-002", "R-001", "R-003"]
+print(len(set(labels)))
+```
+
+### Watch out: The Trap
+
+- `record["missing"]` is a `KeyError`. `.get()` or an `in` check first, always.
+- `record[value]` instead of `record["value"]` is a `NameError`. Keys are usually strings, so quote them.
+- `for value in record:` gives you the keys, not the values. Use `.items()` when you need both.
+- `{}` is an empty dict. An empty set is `set()`. This matters the moment you call `.add()`.
+- Zipping two lists of different lengths silently truncates. Check lengths before you trust the result.
+
+<PyExercise id="w04-dict-get-default" initialCode="record = &#123;'label': 'R-001', 'value': 87.0, 'limit': 100.0&#125;&#10;print(record.get('status'))  # TODO: fall back to 'unknown'" expectedOutput="unknown" />
+
+## Waypoint 3: Files, and Files That Are Not There
+
+`with open(path, "w") as f:` opens the file, hands you `f`, and closes it when the block ends, even if the block blows up partway through. That is not convenience, it is the only way to be sure the handle is released.
+
+Read mode is the default. `"w"` truncates the file the moment you open it, `"a"` appends. Pick deliberately, because `"w"` has eaten more log files than any bug in this curriculum.
+
+Looping over an open file gives you one line at a time. Each line keeps its trailing `\n`, so `.strip()` before you compare or split. `.split(",")` turns one line into a list of strings, all of them strings, so cast the numbers before doing arithmetic.
+
+When the file is missing, the program currently dies. `try` and `except` let you decide what happens instead. Name the exception: a bare `except:` will also swallow the typo in your own code, and `except: pass` is the hardest bug in the codebase to find because nothing is broken and nothing is right.
+
+```python
+with open("output.txt", "w") as f:
+    f.write("R-001,87,100\n")
+    f.write("R-002,120,100\n")
+
+with open("output.txt") as f:
+    for line in f:
+        label, value, limit = line.strip().split(",")
+        print(label, float(value), float(limit))
+
+try:
+    with open("missing.txt") as f:
+        text = f.read()
+except FileNotFoundError:
+    print("missing.txt not found, using an empty report")
+    text = ""
+print(repr(text))
+```
+
+### Watch out: The Trap
+
+- A missing file is `FileNotFoundError`, and it will take the whole run down if nothing catches it.
+- Forgetting `.strip()` leaves a `\n` on the last field, so `"100"` never equals `"100\n"`.
+- `"w"` overwrites on open, before your first write. `"a"` appends.
+- Everything from `.split()` is text. `value + 1` raises `TypeError` until you cast it.
+- Catch the wrong exception and the program still crashes. The last line of the traceback names what you should be catching.
+- Catch it and do nothing, and the data is silently missing. Print something.
+
+<PyExercise id="w04-split-fields" initialCode="line = 'R-001,87,100'&#10;label, value, limit = line.split(',')&#10;# TODO: both numbers are still text — add them as numbers&#10;print(label, value, limit)" expectedOutput="R-001 187.0" />
+
+### Watch it sort
+
+The track below is a picture of a sorting algorithm, not a replacement for one. Python still does the comparisons and the list assignments; the scene calls only report what happened. `visualize_array(values)` builds one pillar per value, `swap_elements(i, j)` tells the track to trade two pillars, and `mark_sorted(index)` turns a pillar pale once its slot is final.
+
+Because the values arrive as text, cast each field before you compare it. A sort on strings is legal, but Python compares them character by character, so `"120"` lands before `"45"`.
+
+<div class="scene-split-layout">
+  <div class="scene-col">
+    <SandboxEmbed mode="sort" />
+  </div>
+  <div class="code-col">
+    <PyExercise id="w04-bubble-sort" initialCode="line = '87,45,120,63,92'&#10;values = [float(value) for value in line.split(',')]&#10;visualize_array(values)&#10;&#10;# TODO: bubble sort `values`. After each swap call swap_elements(j, j + 1);&#10;# after each pass call mark_sorted() for the position that is now final.&#10;print(values)" expectedOutput="[45, 63, 87, 92, 120]" />
+  </div>
+</div>
+
+## Waypoint 4: A List of Dicts
+
+This is the shape almost every real dataset uses: rows, each with named fields. Build one by hand first so the structure is not a mystery, then let the loader do it.
+
+`load_records` reads the file, splits each line, and appends one dict per row. The processing loop that follows looks identical whether the list was typed by hand or read from disk. That consistency is the entire point, and it is why week 6's `pandas` will feel like a shortcut rather than magic: it hands you exactly this shape from one function call.
+
+```python
+def load_records(path):
+    """Read label,value,limit lines and return a list of dicts."""
+    records = []
+    with open(path) as f:
+        for line in f:
+            label, value, limit = line.strip().split(",")
+            records.append({"label": label, "value": float(value), "limit": float(limit)})
+    return records
+
+records = [
+    {"label": "R-001", "value": 87.0, "limit": 100.0},
+    {"label": "R-002", "value": 120.0, "limit": 100.0},
+]
+print(records[0]["label"])   # index the list, then key the dict
+
+for record in records:
+    percent = (record["value"] / record["limit"]) * 100
+    status = "OVER LIMIT" if percent >= 100 else "OK"
+    print(f"{record['label']}: {status}")
+```
+
+## The Debrief
+
+You can now load the whole export, address any row by field name, and keep running when a file is not where the manifest promised. The list of dicts is correct and the loader works. It is also the last time you will write this by hand, because next week the fleet gets a name and a behaviour, and a dict cannot answer `srv-07.status()`.

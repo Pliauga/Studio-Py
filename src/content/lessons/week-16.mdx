@@ -1,0 +1,147 @@
+---
+id: "week-16-async-io-and-concurrency"
+title: "Async I/O and Concurrency"
+estimatedMinutes: 22
+---
+
+## The Hook
+
+Your fleet grew from ten hosts to two hundred. Polling each host's `/health` endpoint sequentially with `requests.get()` takes 250 milliseconds per host—nearly a full minute where the script mostly sits idle waiting for network packets to come back. If three hosts time out at 10 seconds each, the sweep takes a minute and a half. Tonight you stop waiting in line and run network I/O concurrently with **`asyncio`**.
+
+## Waypoint 1: Waiting Concurrently vs. Waiting in Line
+
+Synchronous code blocks the entire process on every network call: ask host 1, wait, get reply; ask host 2, wait, get reply. **Asynchronous I/O** (`async` / `await`) uses a single-threaded event loop to start all those waits at the same time. Whenever a task hits an `await` on a network read or timer, it yields control back to the event loop so another task can make progress.
+
+Defining `async def probe(host):` creates a **coroutine function**. Calling `probe("srv-01")` does not run the body—it returns a coroutine object. To actually execute it, you `await` it inside another `async def` function, or hand the top-level coroutine to `asyncio.run()`.
+
+```python
+import asyncio
+
+async def check_host(hostname: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    return f"{hostname}: OK"
+
+async def main() -> None:
+    result = await check_host("srv-01", 0.01)
+    print(result)
+
+asyncio.run(main())
+```
+
+<PyExercise id="w16-await-coroutine" initialCode="import asyncio&#10;&#10;async def fetch_status(host: str) -&gt; str:&#10;    await asyncio.sleep(0.01)&#10;    return f'&#123;host&#125;: READY'&#10;&#10;async def main() -&gt; None:&#10;    &quot;&quot;&quot;Fetch the status for 'srv-01' and print the resolved string.&quot;&quot;&quot;&#10;    # TODO&#10;    pass&#10;&#10;asyncio.run(main())" expectedOutput="srv-01: READY" />
+
+## Waypoint 2: Fan Out with `asyncio.gather`
+
+ awaiting coroutines one after another in a `for` loop (`for h in hosts: await check(h)`) is still sequential: you start the second wait only after the first finishes.
+
+To run them concurrently, build the list of coroutines and pass them to `asyncio.gather(*tasks)`. `gather` schedules all of them on the event loop at once and returns their results in the exact order you passed the inputs, regardless of which host answered first. Ten 100-millisecond calls complete in ~100 milliseconds total instead of a full second.
+
+```python
+import asyncio
+
+async def probe_latency(host: str, ms: int) -> dict:
+    await asyncio.sleep(ms / 1000)
+    return {"host": host, "ms": ms}
+
+async def sweep_fleet() -> list[dict]:
+    targets = [("srv-01", 30), ("srv-02", 10), ("srv-03", 20)]
+    tasks = [probe_latency(h, ms) for h, ms in targets]
+    return await asyncio.gather(*tasks)
+
+results = asyncio.run(sweep_fleet())
+print([r["host"] for r in results])   # order preserved: srv-01, srv-02, srv-03
+```
+
+### Watch out: The Trap
+
+- Writing `for h in hosts: await probe(h)` and expecting concurrency. That runs one coroutine at a time. Collect the coroutines and `await asyncio.gather(*tasks)`.
+- Calling `time.sleep()` or `requests.get()` inside an `async def` function. Both are synchronous and freeze the entire event loop, starving every other concurrent task. Use `await asyncio.sleep()` and an async HTTP client like `httpx.AsyncClient`.
+- Forgetting `await` on a task that mutates state or sends an alert. Python emits `RuntimeWarning: coroutine '...' was never awaited` and the code inside never runs.
+
+<PyExercise id="w16-gather-order" initialCode="import asyncio&#10;&#10;async def fetch_pct(host: str, pct: float) -&gt; tuple[str, float]:&#10;    await asyncio.sleep(0.01)&#10;    return (host, pct)&#10;&#10;async def sweep_all(inputs: list[tuple[str, float]]) -&gt; list[tuple[str, float]]:&#10;    &quot;&quot;&quot;Run fetch_pct concurrently for all (host, pct) pairs and return the results in input order.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;inputs = [('srv-01', 82.0), ('srv-02', 99.5), ('srv-03', 71.0)]&#10;print(asyncio.run(sweep_all(inputs)))" expectedOutput="[('srv-01', 82.0), ('srv-02', 99.5), ('srv-03', 71.0)]" />
+
+<PyExercise id="w16-gather-wallclock" initialCode="import asyncio&#10;import time&#10;&#10;HOSTS = [(&#x27;srv-01&#x27;, 82.0), (&#x27;srv-02&#x27;, 99.5), (&#x27;srv-03&#x27;, 71.0), (&#x27;srv-04&#x27;, 64.0), (&#x27;srv-05&#x27;, 88.0), (&#x27;srv-06&#x27;, 55.0)]&#10;&#10;async def fetch_pct(host: str, pct: float) -&gt; tuple[str, float]:&#10;    await asyncio.sleep(0.05)&#10;    return (host, pct)&#10;&#10;async def sweep_sequential(hosts: list[tuple[str, float]]) -&gt; list[tuple[str, float]]:&#10;    results = []&#10;    for host, pct in hosts:&#10;        results.append(await fetch_pct(host, pct))&#10;    return results&#10;&#10;async def sweep_concurrent(hosts: list[tuple[str, float]]) -&gt; list[tuple[str, float]]:&#10;    &quot;&quot;&quot;Return fetch_pct results for every host from a single asyncio.gather call.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;async def main() -&gt; None:&#10;    start = time.perf_counter()&#10;    await sweep_sequential(HOSTS)&#10;    sequential = time.perf_counter() - start&#10;    start = time.perf_counter()&#10;    results = await sweep_concurrent(HOSTS)&#10;    concurrent = time.perf_counter() - start&#10;    print(len(results), concurrent &lt; sequential, concurrent &gt; 0.02)&#10;&#10;asyncio.run(main())" expectedOutput="6 True True" />
+
+### Watch the switchyard
+
+The three rails are a scheduling diagram, not three CPU threads. `launch_task()` puts a host on its assigned lane, `pause_task()` holds it while another coroutine makes progress, and `finish_task()` sends completed work to the exit. `start_switchyard()` resets the lanes for a fresh run.
+
+<div class="scene-split-layout">
+  <div class="scene-col">
+    <SandboxEmbed mode="switchyard" />
+  </div>
+  <div class="code-col">
+    <PyExercise id="w16-scene-gather" initialCode="import asyncio&#10;&#10;HOSTS = [('srv-01', 82.0), ('srv-02', 99.5), ('srv-03', 71.0)]&#10;&#10;async def run_host(host: str, lane: int) -&gt; str:&#10;    launch_task(host, lane)&#10;    await asyncio.sleep(0.25 + lane * 0.1)&#10;    pause_task(host)&#10;    await asyncio.sleep(0.25)&#10;    finish_task(host)&#10;    return host&#10;&#10;async def main() -&gt; list[str]:&#10;    &quot;&quot;&quot;Gather one run_host coroutine per host and preserve input order.&quot;&quot;&quot;&#10;    start_switchyard()&#10;    # TODO&#10;    return []&#10;&#10;print(asyncio.run(main()))" expectedOutput="['srv-01', 'srv-02', 'srv-03']" />
+  </div>
+</div>
+
+## Waypoint 3: Timeouts and Surviving Partial Failures
+
+By default, if one coroutine inside `asyncio.gather()` raises an exception, `gather` propagates that exception immediately and you lose the results from the healthy hosts. Passing `return_exceptions=True` tells `gather` to catch exceptions and place the exception object directly into the results list alongside the successful return values. You can then inspect each item with `isinstance(res, Exception)`.
+
+Wrap individual probes in `asyncio.wait_for(coro, timeout=...)` so one hung server yields a `TimeoutError` after a deadline without holding up the whole sweep.
+
+```python
+import asyncio
+
+async def unreliable_probe(host: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    if host == "srv-bad":
+        raise RuntimeError("connection reset")
+    return f"{host}: OK"
+
+async def safe_probe(host: str, delay: float) -> str:
+    return await asyncio.wait_for(unreliable_probe(host, delay), timeout=0.05)
+
+async def main() -> None:
+    jobs = [
+        safe_probe("srv-01", 0.01),
+        safe_probe("srv-bad", 0.01),
+        safe_probe("srv-slow", 0.20),
+    ]
+    outcomes = await asyncio.gather(*jobs, return_exceptions=True)
+    for host, item in zip(["srv-01", "srv-bad", "srv-slow"], outcomes):
+        if isinstance(item, Exception):
+            print(f"{host}: FAILED ({type(item).__name__})")
+        else:
+            print(item)
+
+asyncio.run(main())
+```
+
+<PyExercise id="w16-return-exceptions" initialCode="import asyncio&#10;&#10;async def check(host: str) -&gt; str:&#10;    if host == 'srv-down':&#10;        raise ConnectionError('unreachable')&#10;    return f'&#123;host&#125;: UP'&#10;&#10;async def collect_healthy(hosts: list[str]) -&gt; list[str]:&#10;    &quot;&quot;&quot;Probe all hosts concurrently without aborting on connection errors; return only non-Exception results.&quot;&quot;&quot;&#10;    # TODO&#10;    return []&#10;&#10;print(asyncio.run(collect_healthy(['srv-01', 'srv-down', 'srv-02'])))" expectedOutput="['srv-01: UP', 'srv-02: UP']" />
+
+## Waypoint 4: Rate Limiting with `asyncio.Semaphore`
+
+Firing 5,000 concurrent requests at an internal API is indistinguishable from a denial-of-service attack, and you will quickly exhaust local file descriptors or trigger `429 Too Many Requests`.
+
+An `asyncio.Semaphore(limit)` acts as a concurrency bouncer. Wrapping the network call in `async with sem:` allows at most `limit` coroutines inside the block at the same time; the 11th coroutine waits politely at the `async with` line until one of the first 10 finishes and releases its slot.
+
+```python
+import asyncio
+
+async def bounded_probe(sem: asyncio.Semaphore, host: str) -> str:
+    async with sem:
+        await asyncio.sleep(0.01)
+        return f"{host}: checked"
+
+async def sweep_bounded(hosts: list[str], max_concurrent: int = 3) -> list[str]:
+    sem = asyncio.Semaphore(max_concurrent)
+    tasks = [bounded_probe(sem, h) for h in hosts]
+    return await asyncio.gather(*tasks)
+
+hosts = [f"srv-{i:02d}" for i in range(1, 7)]
+print(asyncio.run(sweep_bounded(hosts, max_concurrent=2)))
+```
+
+### Watch out: The Trap
+
+- Creating a new `asyncio.Semaphore(5)` inside the worker function instead of creating one shared semaphore outside and passing it in. Five separate semaphores of size 5 do not limit anything.
+- Opening a new HTTP client session inside every single coroutine (`async with httpx.AsyncClient() as client:` inside `bounded_probe`). Create one shared `AsyncClient` outside `gather` so all requests reuse the same TCP connection pool.
+- Using `asyncio` to speed up heavy CPU math. Event loops overlap *waiting*, not calculation; CPU-bound work belongs in `concurrent.futures.ProcessPoolExecutor`.
+
+<PyExercise id="w16-semaphore-peak" initialCode="import asyncio&#10;&#10;active = 0&#10;peak = 0&#10;&#10;async def step() -&gt; None:&#10;    global active, peak&#10;    active += 1&#10;    peak = max(peak, active)&#10;    await asyncio.sleep(0.01)&#10;    active -= 1&#10;&#10;async def worker(sem: asyncio.Semaphore) -&gt; None:&#10;    &quot;&quot;&quot;Execute step() while holding the concurrency slot in sem.&quot;&quot;&quot;&#10;    # TODO&#10;    await step()&#10;&#10;async def main() -&gt; None:&#10;    sem = asyncio.Semaphore(2)&#10;    await asyncio.gather(*(worker(sem) for _ in range(6)))&#10;    print('Peak:', peak)&#10;&#10;asyncio.run(main())" expectedOutput="Peak: 2" />
+
+## The Debrief
+
+Two hundred hosts no longer take a minute to check. Your scanner fires probes concurrently with `asyncio.gather`, isolates timeouts and broken connections with `wait_for` and `return_exceptions=True`, and caps in-flight requests with a `Semaphore` so you never flood the target service. Next week we tackle the flip side of scale: processing multi-gigabyte log streams without loading the whole file into RAM.

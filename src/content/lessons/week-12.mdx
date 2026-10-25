@@ -1,0 +1,182 @@
+---
+id: "week-12-intelligence-and-deployment"
+title: "Calling an LLM API"
+estimatedMinutes: 20
+---
+
+## The Hook
+
+The dashboard shows the fleet, but showing is all it does. Somebody has to read forty rows at 3 AM and decide which one is the anomaly, so tonight you add a pass that asks a language model for a sentence about the worst record. That means a network call, which means a key, a bill, and a service that can say **429 Too Many Requests** while you are asleep. Then it has to ship, because a call that only works on your laptop has never helped anyone on call.
+
+## Waypoint 1: A key can be optional, a crash cannot
+
+The key arrives the same way it did in Week 9, through the environment: `os.environ.get("OPENAI_API_KEY")` returns the string or `None`. Never hard-code it, and never print it, not even the first four characters. Print whether it is set and move on.
+
+The interesting decision is what happens when it is missing, and there are two correct answers. A feature that must work should raise loudly and immediately. A feature that is a bonus should return `None` and let the rest of the page carry on. **The required part of the app must never depend on the optional part succeeding.**
+
+```python
+import os
+from openai import OpenAI
+
+def build_client():
+    """Return a configured client, or None when no key is set."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if api_key is None:
+        return None
+    return OpenAI(api_key=api_key, timeout=10.0)
+
+client = build_client()
+print("LLM enabled" if client else "LLM skipped - no key set")
+```
+
+Run that on a box with no key and it prints the second line without raising. The report is complete; the extra paragraph is simply absent.
+
+Note the order: `OpenAI()` reads the key itself and raises `openai.OpenAIError` when credentials are missing. Constructing the client before the check turns an optional feature into a startup crash, and the error message points at credentials rather than at your ordering mistake.
+
+### Watch out: The Trap
+
+- Hard-coding a key "just to test". It is one commit away from a public repository, and the commit is forever.
+- Letting a missing key take the process down. The alerts, the table, the filters all die because an optional sentence could not be written.
+- Logging the key while debugging. It is now in your shell history, your CI log, and eventually someone's screenshot.
+- Confusing the loud version with the quiet version. `require_key()` raises; `optional_key()` returns `None`. Pick per feature, deliberately.
+
+## Waypoint 2: The API remembers nothing you do not resend
+
+The client call takes a model name and `messages`, a list of dictionaries with a `role` and `content`. The **system** message sets behaviour, the **user** message is the request, and the reply comes back at `response.choices[0].message.content`. Learn that path by heart; it does not move.
+
+The part that catches everyone is that the API is **stateless**. Nothing is remembered between calls. The conversation exists only because you keep appending to a list and sending the whole thing back, every time.
+
+```python
+import openai
+from openai import OpenAI
+
+client = OpenAI()   # reads OPENAI_API_KEY from the environment
+
+messages = [{"role": "system", "content": "You are a concise ops assistant."}]
+
+def ask(user_text):
+    messages.append({"role": "user", "content": user_text})
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            timeout=10.0,
+        )
+    except openai.RateLimitError:
+        messages.pop()          # do not leave an unanswered turn in the history
+        return None
+    except openai.AuthenticationError:
+        messages.pop()
+        return None
+    reply = response.choices[0].message.content
+    messages.append({"role": "assistant", "content": reply})   # <- this line IS the memory
+    return reply
+```
+
+The `assistant` append is not bookkeeping. Without it the next call sees your question and no answer, and the model repeats itself or contradicts what it just said.
+
+`RateLimitError` is the 429 case: you are asking faster than your quota allows. Catch it, retry with exponential backoff and a cap, and surface a "try again later" message rather than hammering the endpoint. `AuthenticationError` is the key case: wrong, revoked, or absent. Neither is a reason to crash the whole report, and neither is fixed by retrying forever.
+
+### Watch out: The Trap
+
+- Forgetting to append the reply. The next turn has no memory of this one, and the bug looks like a model problem rather than a list problem.
+- Constructing the client before checking that a key exists. `openai.OpenAIError: Missing credentials` is a confusing way to learn about ordering.
+- Assuming the calls are free. They are metered. Use `gpt-4o-mini` while developing and set a spending limit before you leave it running.
+- Retrying a `RateLimitError` in a tight loop. The queue gets longer, not shorter. Back off, cap the attempts, and log the failure.
+
+<PyExercise id="w12-resend-history" initialCode="history = [&#123;'role': 'system', 'content': 'You are a concise ops assistant.'&#125;]&#10;def turn(user_text, reply):&#10;    history.append(&#123;'role': 'user', 'content': user_text&#125;)&#10;    # TODO: append the reply, or the next call has no memory&#10;turn('2+2?', '4')&#10;print(len(history), [m['role'] for m in history])" expectedOutput="3 ['system', 'user', 'assistant']" />
+
+## Waypoint 3: Test the edge, fake the network
+
+A test is a function whose name starts with `test_`, containing at least one `assert`. When the assertion is false, the test fails and names the line. That is the entire mechanism, and `pytest file.py` finds every one of them without a list to maintain.
+
+Test the boundaries, not the comfortable middle. A classifier with thresholds at 50 and 100 has three interesting inputs: 49, 50, and 100. That is where the `>=` versus `>` bug lives, and that bug is invisible if you only ever test 150.
+
+```python
+# tests/test_limits.py
+import pytest
+
+def status_of(open_issues, warning_at=50, limit=100):
+    if open_issues >= limit:
+        return "OVER LIMIT"
+    elif open_issues >= warning_at:
+        return "WARNING"
+    return "OK"
+
+@pytest.mark.parametrize("n, expected", [
+    (49, "OK"),
+    (50, "WARNING"),
+    (99, "WARNING"),
+    (100, "OVER LIMIT"),
+    (150, "OVER LIMIT"),
+])
+def test_status(n, expected):
+    assert status_of(n) == expected
+```
+
+Run `pytest -q` and the five rows are reported independently. Nothing calls the test functions by hand and nothing prints "passed"; the runner owns that job, and it does not believe you until the assertion succeeds.
+
+Code that calls the network gets tested too, without the network. `MagicMock` stands in for the client and you decide exactly what it returns, so the test is fast, free and deterministic.
+
+```python
+from unittest.mock import MagicMock
+
+def ask(client, messages, user_text):
+    messages.append({"role": "user", "content": user_text})
+    response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
+    reply = response.choices[0].message.content
+    messages.append({"role": "assistant", "content": reply})
+    return reply
+
+def test_ask_returns_mocked_reply():
+    client = MagicMock()
+    client.chat.completions.create.return_value.choices = [
+        MagicMock(message=MagicMock(content="4"))
+    ]
+    assert ask(client, [], "2+2?") == "4"
+```
+
+What you are testing is your wiring: that the reply is read from the right place and appended back. The model's actual answer is not your code's business.
+
+The editor below runs a script rather than a test session, so it calls the test function directly; the same body is collected by `pytest` when it lives in a test file.
+
+### Watch out: The Trap
+
+- Only testing the happy path. The bug at exactly 100 ships because every test used 150.
+- Calling the real, paid API inside a test. It is slow, it costs money, and it fails when the network does, which teaches you nothing about your code.
+- A test function with no `assert`. It passes, it checks nothing, and it counts as coverage.
+- One giant test asserting everything. When it fails you get a line number and no idea which behaviour broke.
+
+<PyExercise id="w12-threshold-edge" initialCode="def status_of(n, warning_at=50, limit=100):&#10;    if n &gt; limit:  # TODO: fix the boundary operator so 100 is OVER LIMIT&#10;        return 'OVER LIMIT'&#10;    return 'WARNING' if n &gt;= warning_at else 'OK'&#10;&#10;def test_status_boundaries():&#10;    assert status_of(49) == 'OK'&#10;    assert status_of(50) == 'WARNING'&#10;    # TODO: assert that 99 is 'WARNING' and 100 is 'OVER LIMIT'&#10;    assert status_of(150) == 'OVER LIMIT'&#10;&#10;test_status_boundaries()&#10;print(status_of(49), status_of(50), status_of(99), status_of(100))" expectedOutput="OK WARNING WARNING OVER LIMIT" />
+
+## Waypoint 4: What the cloud needs, and what never leaves the laptop
+
+Deployment is a checklist, not a ceremony. `requirements.txt` lists every library you import, because the cloud builds from that file and nothing else. `.gitignore` keeps the database file, the secrets file and the caches out of the repository, and it has to be in place **before** the first commit that would include them.
+
+Then a pre-flight check, on your machine, before the cloud finds the mistake for you.
+
+```python
+import os
+
+REQUIREMENTS = ["pandas", "requests", "openai"]
+GITIGNORE = ["*.db", ".env", "__pycache__/", ".pytest_cache/"]
+
+def check_requirements_txt(project_dir):
+    path = os.path.join(project_dir, "requirements.txt")
+    return os.path.exists(path) and os.path.getsize(path) > 0
+
+print(check_requirements_txt("."))
+```
+
+The real steps after that: push to the repository, confirm both files are correct, configure the platform to install from `requirements.txt`, paste `OPENAI_API_KEY` into the platform's secret store rather than into a file, then open the public URL in a browser where you are not logged in and confirm the no-key path still renders.
+
+### Watch out: The Trap
+
+- Committing the `.db` file. Real hashed passwords are now in public history. `.gitignore` stops the next commit; it does not remove the last one.
+- Putting secrets in a file and deploying anyway. The repository is public the moment you connect it.
+- Deploying without a fresh clone test. Your working directory has files the repository does not, and the cloud has none of them.
+- Assuming "it works on my machine" is a status. It is a description of your machine.
+
+## The Debrief
+
+The scoring pass now degrades instead of crashing, keeps its own history because it resends it, handles a rate limit instead of retrying forever, and is tested at the boundary where the bug actually lives. The app installs from a file, ignores what it must not publish, and opens for someone who has never seen your terminal. Eleven weeks ago the fleet was a text file and a `for` loop. It is now a system with storage, an interface, an API call and an address, and none of it resets.
