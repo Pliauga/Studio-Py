@@ -1,0 +1,283 @@
+/*
+ * OFFMUTE base design. Paper, ink, and a single muted grey for metadata.
+ * `--color-tertiary` (#5A595E) clears 4.5:1 on paper; the reference
+ * #8A898E (2.9:1) is not used for text.
+ *
+ * Prose is fluid, but its floor and ceiling are rem-based so a larger browser
+ * default font still propagates. The root itself stays at the user's default.
+ */
+:root {
+	color-scheme: light;
+	--color-paper: #f1f1f1;
+	--color-ink: #000000;
+	--color-tertiary: #5a595e;
+	--color-muted: var(--color-tertiary);
+	/* The structural rule: the grid, the plate frames, any line that carries structure. */
+	--color-line: var(--color-ink);
+	/* A rule that recedes: interior hairlines, disabled tracks. */
+	--color-line-faint: rgba(0, 0, 0, 0.14);
+	/* The one authored accent: the snake's body, the CRT square and the live prompt.
+	   Neon on purpose — the machine half of the thesis, not a SaaS progress tint.
+	   static/snake/*.png are stamped with this exact hex — re-slice them if it moves. */
+	--color-snake: #40f51a;
+	--color-snake-shade: color-mix(in srgb, var(--color-snake) 76%, var(--color-ink));
+	--code-inline-bg: #e5e5e5;
+	--syntax-keyword: #005cc5;
+	--syntax-builtin: #0e7490;
+	--syntax-string: #c2410c;
+	--syntax-function: #116329;
+	--syntax-number: #804ddf;
+	--syntax-comment: #666e78;
+	--font-display:
+		'Inter',
+		'Inter Fallback',
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		sans-serif;
+	--font-body: 'Sorts Mill Goudy', 'Sorts Mill Goudy Fallback', 'Iowan Old Style', Georgia, serif;
+	--font-mono: 'Courier Prime', 'Courier Prime Fallback', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+	/*
+	 * MOTION
+	 *
+	 * Nothing moves unless something changed. Entrance is a single stagger.
+	 * Scroll may drive transform and opacity only. The printed side never moves.
+	 *
+	 * Four durations, two curves. Every state change in the site reads them — CSS
+	 * via var(), the portal transition by reading these properties at runtime — so
+	 * changing a value here changes the whole site. Three timings stay outside on
+	 * purpose and are listed with their reasons at the end of this block.
+	 *
+	 *   1  120ms  a state flip you should feel but not watch (chip, label)
+	 *   2  200ms  a small reveal (a card arriving, a route fading in)
+	 *   3  320ms  a whole-surface move (the portal opening)
+	 *   4  480ms  the longest authored beat; held in reserve for the warp's dock
+	 *
+	 * Outside the scale, deliberately:
+	 *   50ms   linear   the masthead's scroll-follow bar — tracks the scroll rather
+	 *                   than marking a change, so it must not be smoothed by a curve
+	 *   1.4s   steps(1) the idle cursor blink — a loop, not a state change
+	 *   200/250/250ms  the snake warp's activate/travel/dock — an authored sequence
+	 *                   whose beats are tuned against each other, not a state flip
+	 */
+	--duration-1: 120ms;
+	--duration-2: 200ms;
+	--duration-3: 320ms;
+	--duration-4: 480ms;
+	/* standard: leaves slowly, arrives smoothly. Every state change. */
+	--ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+	/* snap: the hand-off curve. The portal and the warp only. */
+	--ease-snap: cubic-bezier(0.85, 0, 0.15, 1);
+}
+
+html[data-theme='dark'] {
+	color-scheme: dark;
+	--color-paper: #000000;
+	--color-ink: #f1f1f1;
+	--color-tertiary: #a3a2a7;
+	--color-muted: var(--color-tertiary);
+	--color-line: var(--color-ink);
+	--color-line-faint: rgba(241, 241, 241, 0.16);
+	--code-inline-bg: #2e2e2e;
+	--syntax-keyword: #8cb4e3;
+	--syntax-builtin: #7bd0c6;
+	--syntax-string: #e48c74;
+	--syntax-function: #7bd0a8;
+	--syntax-number: #b99ee6;
+	--syntax-comment: #888888;
+}
+
+@font-face {
+	font-family: 'Inter';
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+	src: url('/fonts/inter-latin.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Sorts Mill Goudy';
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+	src: url('/fonts/sorts-mill-goudy-400.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Courier Prime';
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+	src: url('/fonts/courier-prime-400.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Courier Prime';
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+	src: url('/fonts/courier-prime-700.woff2') format('woff2');
+}
+
+/* Metric-matched local fallbacks: overrides derived from the real font files
+   (average lowercase advance for size-adjust; ascent/descent divided by it)
+   so the swap to the web font does not shift layout. */
+@font-face {
+	font-family: 'Inter Fallback';
+	src: local('Arial');
+	size-adjust: 107.7%;
+	ascent-override: 90%;
+	descent-override: 22.4%;
+	line-gap-override: 0%;
+}
+
+@font-face {
+	font-family: 'Sorts Mill Goudy Fallback';
+	src: local('Times New Roman');
+	size-adjust: 107%;
+	ascent-override: 89.7%;
+	descent-override: 44.7%;
+	line-gap-override: 0%;
+}
+
+@font-face {
+	font-family: 'Courier Prime Fallback';
+	src: local('Courier New');
+	size-adjust: 99.9%;
+	ascent-override: 78.2%;
+	descent-override: 34.2%;
+	line-gap-override: 0%;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	scrollbar-width: none;
+	-webkit-text-size-adjust: 100%;
+}
+
+html::-webkit-scrollbar {
+	display: none;
+}
+
+body {
+	margin: 0;
+	background: var(--color-paper);
+	color: var(--color-ink);
+	font-family: var(--font-body);
+	/* Fluid prose: rem floor/ceiling inherit the user's browser font-size;
+	   only the middle term scales with the viewport. */
+	font-size: clamp(1rem, 0.5vw + 0.6rem, 1.6rem);
+	line-height: 1.45;
+	font-weight: 400;
+	overflow-x: hidden;
+	overscroll-behavior-y: none;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-weight: 500;
+	line-height: 0.94;
+	letter-spacing: -0.035em;
+	text-wrap: balance;
+}
+
+p {
+	margin: 0;
+}
+
+img,
+video,
+canvas {
+	display: block;
+	max-width: 100%;
+}
+
+a {
+	color: inherit;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.18em;
+}
+
+button,
+input,
+textarea,
+select {
+	font: inherit;
+	color: inherit;
+}
+
+::selection {
+	background: var(--color-ink);
+	color: var(--color-paper);
+}
+
+/* Static MDX code blocks: force Prism token colors over global code resets.
+   Attribute selectors catch every class-name combination Prism emits
+   (`token string-interpolation`, `token triple-quoted-string string`, ...);
+   the tones are variables, so dark mode flips them with the theme. */
+.prose pre code span[class*='token keyword'] {
+	color: var(--syntax-keyword) !important;
+	font-weight: 700 !important;
+}
+
+.prose pre code span[class*='token boolean'],
+.prose pre code span[class*='token builtin'] {
+	color: var(--syntax-builtin) !important;
+}
+
+.prose pre code span[class*='token function'],
+.prose pre code span[class*='token class-name'] {
+	color: var(--syntax-function) !important;
+}
+
+.prose pre code span[class*='token number'] {
+	color: var(--syntax-number) !important;
+}
+
+.prose pre code span[class*='token string'],
+.prose pre code span[class*='token char'] {
+	color: var(--syntax-string) !important;
+}
+
+.prose pre code span[class*='token comment'] {
+	color: var(--syntax-comment) !important;
+	font-style: italic !important;
+}
+
+.prose pre code span[class*='token operator'] {
+	color: var(--color-ink) !important;
+}
+
+.prose pre code span[class*='token punctuation'] {
+	color: var(--color-muted) !important;
+}
+
+:focus-visible {
+	outline: 2px solid currentColor;
+	outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation: none !important;
+		animation-delay: 0s !important;
+		transition: none !important;
+		scroll-behavior: auto !important;
+	}
+}
