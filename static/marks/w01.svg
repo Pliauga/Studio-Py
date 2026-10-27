@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Plate 01">
+  <defs>
+    <pattern id="ht-w01" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(11)">
+      <circle cx="4" cy="4" r="1.47" fill="#000"/>
+    </pattern>
+    <filter id="rough-w01" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.6" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <clipPath id="disc-w01"><circle cx="100" cy="100" r="86"/></clipPath>
+  </defs>
+  <g fill="none" stroke="#000" stroke-linecap="square" stroke-linejoin="miter">
+    <g clip-path="url(#disc-w01)" filter="url(#rough-w01)">
+      <rect x="12" y="18" width="176" height="12" fill="url(#ht-w01)" stroke="none"/><path d="M12 18 H188"/><rect x="12" y="30" width="176" height="24" fill="none" stroke="none"/><path d="M12 30 H188"/><rect x="12" y="54" width="176" height="32" fill="url(#ht-w01)" stroke="none"/><path d="M12 54 H188"/><rect x="12" y="86" width="176" height="22" fill="none" stroke="none"/><path d="M12 86 H188"/><rect x="12" y="108" width="176" height="34" fill="url(#ht-w01)" stroke="none"/><path d="M12 108 H188"/><rect x="12" y="142" width="176" height="18" fill="none" stroke="none"/><path d="M12 142 H188"/><rect x="12" y="160" width="176" height="26" fill="url(#ht-w01)" stroke="none"/><path d="M12 160 H188"/><path d="M12 18 V182 M188 18 V182"/>
+    </g>
+    <circle cx="100" cy="100" r="86" stroke-width="1.6"/>
+    <circle cx="100" cy="100" r="92" stroke-width="0.7" stroke-dasharray="1 3"/>
+    <path d="M100 2 L100 -4" stroke-width="2.2"/><path d="M124.37 5.08 L125.86 -0.73" stroke-width="2.2"/>
+    <g transform="translate(118.4 28.32)"><path d="M-5 0 H5 M0 -5 V5" stroke-width="1" stroke="#fff"/><path d="M-4 0 H4 M0 -4 V4" stroke-width="1.1"/></g>
+    <g stroke-width="13" stroke="#fff"><path d="M7 4 H41" transform="translate(49 0)"/><path d="M44 7 V39" transform="translate(49 0)"/><path d="M44 43 V75" transform="translate(49 0)"/><path d="M7 78 H41" transform="translate(49 0)"/><path d="M4 43 V75" transform="translate(49 0)"/><path d="M4 7 V39" transform="translate(49 0)"/><path d="M44 7 V39" transform="translate(101 0)"/><path d="M44 43 V75" transform="translate(101 0)"/></g>
+    <g stroke-width="6.4" stroke="#000"><path d="M7 4 H41" transform="translate(49 0)"/><path d="M44 7 V39" transform="translate(49 0)"/><path d="M44 43 V75" transform="translate(49 0)"/><path d="M7 78 H41" transform="translate(49 0)"/><path d="M4 43 V75" transform="translate(49 0)"/><path d="M4 7 V39" transform="translate(49 0)"/><path d="M44 7 V39" transform="translate(101 0)"/><path d="M44 43 V75" transform="translate(101 0)"/></g>
+    <g stroke-width="1.1">
+      <path d="M14 14 H38 M14 14 V38"/>
+      <path d="M186 186 H162 M186 186 V162"/>
+    </g>
+  </g>
+</svg>

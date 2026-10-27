@@ -1,0 +1,377 @@
+{
+  "shots": [
+    {
+      "name": "lesson-1440-default.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "fontDefault": 16,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": "16.8px",
+      "prose": "16.8px",
+      "sw": 1440,
+      "cw": 1440,
+      "sh": 7838,
+      "overflow": false
+    },
+    {
+      "name": "lesson-1440-font32.png",
+      "viewport": [
+        1440,
+        1000
+      ],
+      "fontDefault": 32,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": "32px",
+      "prose": "32px",
+      "sw": 1440,
+      "cw": 1440,
+      "sh": 11931,
+      "overflow": false
+    },
+    {
+      "name": "lesson-390-font32.png",
+      "viewport": [
+        390,
+        844
+      ],
+      "fontDefault": 32,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": "32px",
+      "prose": "32px",
+      "sw": 390,
+      "cw": 390,
+      "sh": 20570,
+      "overflow": false
+    },
+    {
+      "name": "dashboard-390-font20.png",
+      "viewport": [
+        390,
+        844
+      ],
+      "fontDefault": 20,
+      "path": "/dashboard",
+      "body": "20px",
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "sh": 6473,
+      "overflow": false
+    }
+  ],
+  "transition": {
+    "opacityDuring": "0.260331",
+    "opacityAfter": "0.298867",
+    "playbackRate": 0.1,
+    "method": "CDP Animation.setPlaybackRate(0.1); client-side navigation; screenshot at ~700ms real time",
+    "headerOutsidePage": true,
+    "headerBlend": "difference",
+    "sandboxCanvasPresent": true
+  },
+  "reducedMotion": {
+    "media": true,
+    "pageAnimation": "none",
+    "pageTransition": "0s",
+    "pageOpacity": "1",
+    "scrollBehavior": "auto",
+    "headerTransition": "0s",
+    "headerOutsidePage": true
+  },
+  "overflowMatrix": [
+    {
+      "viewport": 1440,
+      "defaultFont": 16,
+      "path": "/",
+      "body": 16.8,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 16,
+      "path": "/dashboard",
+      "body": 16.8,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 16,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": 16.8,
+      "prose": 16.8,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 16,
+      "path": "/dev/sandbox-test",
+      "body": 16.8,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 20,
+      "path": "/",
+      "body": 20,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 20,
+      "path": "/dashboard",
+      "body": 20,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 20,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": 20,
+      "prose": 20,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 20,
+      "path": "/dev/sandbox-test",
+      "body": 20,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 32,
+      "path": "/",
+      "body": 32,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 32,
+      "path": "/dashboard",
+      "body": 32,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 32,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": 32,
+      "prose": 32,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 1440,
+      "defaultFont": 32,
+      "path": "/dev/sandbox-test",
+      "body": 32,
+      "prose": null,
+      "sw": 1440,
+      "cw": 1440,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 16,
+      "path": "/",
+      "body": 16,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 16,
+      "path": "/dashboard",
+      "body": 16,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 16,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": 16,
+      "prose": 16,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 16,
+      "path": "/dev/sandbox-test",
+      "body": 16,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 20,
+      "path": "/",
+      "body": 20,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 20,
+      "path": "/dashboard",
+      "body": 20,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 20,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": 20,
+      "prose": 20,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 20,
+      "path": "/dev/sandbox-test",
+      "body": 20,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 32,
+      "path": "/",
+      "body": 32,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 32,
+      "path": "/dashboard",
+      "body": 32,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 32,
+      "path": "/lesson/week-01-variables-types-and-output",
+      "body": 32,
+      "prose": 32,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "defaultFont": 32,
+      "path": "/dev/sandbox-test",
+      "body": 32,
+      "prose": null,
+      "sw": 390,
+      "cw": 390,
+      "overflow": false
+    }
+  ],
+  "contrast": {
+    "light": {
+      "token": "#5a595e",
+      "background": "#f1f1f1",
+      "ratio": 6.15,
+      "used": true
+    },
+    "dark": {
+      "token": "#a3a2a7",
+      "background": "#000000",
+      "ratio": 8.28,
+      "used": true
+    },
+    "note": "A single grey cannot pass 4.5:1 on both backgrounds; tokens swap with theme."
+  },
+  "headerFrames": [
+    {
+      "name": "header-transition-sandbox-1.png",
+      "before": {
+        "opacity": "0.331949",
+        "headerVisible": true,
+        "headerOutsidePage": true,
+        "blend": "difference",
+        "canvas": true,
+        "url": "/dev/sandbox-test"
+      },
+      "after": "0.345912"
+    },
+    {
+      "name": "header-transition-sandbox-2.png",
+      "before": {
+        "opacity": "0.670204",
+        "headerVisible": true,
+        "headerOutsidePage": true,
+        "blend": "difference",
+        "canvas": true,
+        "url": "/dev/sandbox-test"
+      },
+      "after": "0.681053"
+    },
+    {
+      "name": "header-transition-sandbox-3.png",
+      "before": {
+        "opacity": "0.910974",
+        "headerVisible": true,
+        "headerOutsidePage": true,
+        "blend": "difference",
+        "canvas": true,
+        "url": "/dev/sandbox-test"
+      },
+      "after": "0.917488"
+    }
+  ]
+}
