@@ -7,8 +7,5 @@
   "assets": {
     "directory": ".svelte-kit/cloudflare",
     "binding": "ASSETS"
-  },
-  "observability": {
-    "enabled": true
   }
 }
