@@ -1,6 +1,10 @@
 # Studio Py
 
-<img src="static/studio-py-poster.webp" alt="Studio Py Poster" width="400" />
+<p align="center">
+  <img src="static/studio-py-poster.webp" alt="Studio Py Poster" width="400" />
+  <br />
+  <sub>25 modules · 24 weeks · runs in your browser</sub>
+</p>
 
 A browser-based Python curriculum. 25 modules of runnable code for developers who have shipped software but never written Python.
 
