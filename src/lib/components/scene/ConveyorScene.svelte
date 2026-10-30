@@ -13,10 +13,12 @@
 
 	type Props = {
 		reduceMotion?: boolean;
+		/** A Python error froze the machine: the belt and every parcel hold position. */
+		jammed?: boolean;
 		onchange?: (live: number, delivered: number) => void;
 	};
 
-	let { reduceMotion = false, onchange }: Props = $props();
+	let { reduceMotion = false, jammed = false, onchange }: Props = $props();
 
 	const FONT = '/fonts/courier-prime-700.ttf';
 	const DARK = '#1b1b1b';
@@ -76,7 +78,23 @@
 	let beltOffset = 0;
 	let slatGroup: Group | undefined = $state();
 
-	const nowSeconds = () => performance.now() / 1000;
+	// Parcel positions are a function of the clock, so a jam stops the clock itself:
+	// every parcel resumes exactly where it froze if the next run reuses the stage.
+	let jamStartedAt: number | null = null;
+	let jamHeld = 0;
+	const wallSeconds = () => performance.now() / 1000;
+	const nowSeconds = () => (jamStartedAt ?? wallSeconds()) - jamHeld;
+
+	$effect(() => {
+		const frozen = jammed;
+		untrack(() => {
+			if (frozen && jamStartedAt === null) jamStartedAt = wallSeconds();
+			else if (!frozen && jamStartedAt !== null) {
+				jamHeld += wallSeconds() - jamStartedAt;
+				jamStartedAt = null;
+			}
+		});
+	});
 
 	function publish() {
 		onchange?.(items.length, delivered);
@@ -216,7 +234,7 @@
 	useTask((delta) => {
 		if (!slatGroup) return;
 
-		if (!reduceMotion && active) {
+		if (!reduceMotion && active && !jammed) {
 			beltOffset = (beltOffset + delta * SPEED) % BELT_LENGTH;
 			for (let i = 0; i < slatGroup.children.length; i += 1) {
 				const base = BELT_LEFT + i * SLAT_GAP;
@@ -226,7 +244,7 @@
 			}
 		}
 
-		if (reduceMotion || items.length === 0) return;
+		if (reduceMotion || jammed || items.length === 0) return;
 
 		const now = nowSeconds();
 		let changed = false;

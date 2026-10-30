@@ -16,8 +16,7 @@
 	} from 'three';
 	import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 	import type { Font } from 'three/examples/jsm/loaders/FontLoader.js';
-	import { CELL_W, layoutForme, type Letter } from '#lib/motion/letterpress.ts';
-	import BrutalistRender from './BrutalistRender.svelte';
+	import { LINE_PITCH, layoutForme, type Letter } from '#lib/motion/letterpress.ts';
 	import RapierMotion from './RapierMotion.svelte';
 
 	type Props = {
@@ -37,9 +36,11 @@
 	const EM = 2;
 	/** Type height: a steel sort is far taller than the glyph's relief. */
 	const BODY = 0.5;
-	/** Glyph box in em, baseline-relative: descenders reach -0.2, caps reach 0.6. */
-	const BOX_BOTTOM = -0.2;
-	const BOX_TOP = 0.6;
+	/** Glyph box in em, baseline-relative: Inter Black's caps reach 0.74, descenders -0.22. */
+	const BOX_BOTTOM = -0.26;
+	const BOX_TOP = 0.74;
+	/** The sort is a shade shallower than the line pitch, so set-solid lines never interpenetrate. */
+	const SORT_FIT = 0.9;
 	const MASS = 400;
 	/** Pointer reach on the bed, world units. */
 	const REACH = 1.7;
@@ -48,55 +49,70 @@
 	/** Velocity a tap adds to a block touching it, units/s. */
 	const TAP = 1.1;
 	const DROP = 0.6;
+	/** The glyphs are built once per forme, not per frame. */
+	const CURVE_SEGMENTS = 16;
 
 	const { size, camera } = useThrelte();
 
-	// The forme is fixed for the page's life: the hero copy does not change.
-	const forme = untrack(() => layoutForme(lines));
-	const widthUnits = forme.width * EM;
+	// The forme belongs to the breakpoint: a new set of lines is a new forme.
+	const forme = $derived(untrack(() => layoutForme(lines, font.data)));
+	const widthUnits = $derived(forme.width * EM);
+	const depthUnits = $derived(forme.depth * EM);
 
-	const disposables: { dispose: () => void }[] = [];
-	const faceGeometries = new Map<string, BufferGeometry>();
-	const edgeGeometries = new Map<string, BufferGeometry>();
-
-	for (const char of new Set(forme.letters.map((letter) => letter.char))) {
-		const geometry = new TextGeometry(char, {
-			font: untrack(() => font),
-			size: EM,
-			depth: BODY,
-			curveSegments: 6,
-			bevelEnabled: false
-		});
-		// Centre the glyph box on the body, then lay it face-up on the bed.
-		geometry.translate(-(CELL_W * EM) / 2, -((BOX_BOTTOM + BOX_TOP) / 2) * EM, -BODY / 2);
-		geometry.rotateX(-Math.PI / 2);
-		geometry.computeBoundingBox();
-		faceGeometries.set(char, geometry);
-		edgeGeometries.set(char, new EdgesGeometry(geometry, 35));
-		disposables.push(geometry, edgeGeometries.get(char)!);
-	}
+	type Sorts = { faces: Map<string, BufferGeometry>; edges: Map<string, BufferGeometry> };
+	let sorts = $state.raw<Sorts>({ faces: new Map(), edges: new Map() });
 
 	const outline = new LineBasicMaterial();
-	disposables.push(outline);
+
+	$effect(() => {
+		const current = forme;
+		const faces = new Map<string, BufferGeometry>();
+		const edges = new Map<string, BufferGeometry>();
+
+		for (const letter of current.letters) {
+			if (faces.has(letter.char)) continue;
+			const geometry = new TextGeometry(letter.char, {
+				font: untrack(() => font),
+				size: EM,
+				depth: BODY,
+				// Crisp on purpose: a coarse tessellation reads as faceted at display size.
+				curveSegments: CURVE_SEGMENTS,
+				bevelEnabled: false
+			});
+			// Centre the sort on its own advance, then lay it face-up on the bed.
+			geometry.translate(-(letter.advance * EM) / 2, -((BOX_BOTTOM + BOX_TOP) / 2) * EM, -BODY / 2);
+			geometry.rotateX(-Math.PI / 2);
+			geometry.computeBoundingBox();
+			faces.set(letter.char, geometry);
+			edges.set(letter.char, new EdgesGeometry(geometry, 35));
+		}
+
+		const previous = untrack(() => sorts);
+		sorts = { faces, edges };
+		for (const geometry of previous.faces.values()) geometry.dispose();
+		for (const geometry of previous.edges.values()) geometry.dispose();
+	});
 
 	$effect(() => {
 		outline.color.set(paper);
 	});
 
 	onDestroy(() => {
-		for (const disposable of disposables) disposable.dispose();
+		for (const geometry of sorts.faces.values()) geometry.dispose();
+		for (const geometry of sorts.edges.values()) geometry.dispose();
+		outline.dispose();
 	});
 
-	// The camera never moves: a fixed oblique view onto the bed, zoomed to fit the forme.
-	/** The forme fills this share of the canvas width. */
-	const FILL = 0.9;
+	// The camera never moves: a fixed oblique view onto the bed, fitted to the forme.
+	/** The forme fills this share of the canvas, on whichever axis binds first. */
+	const FILL = 0.94;
 	$effect(() => {
 		const current = camera.current;
 		if (!(current instanceof OrthographicCamera)) return;
-		const { width } = size.current;
-		if (width <= 0) return;
-		// Zoom is pixels per world unit.
-		current.zoom = (width * FILL) / widthUnits;
+		const { width, height } = size.current;
+		if (width <= 0 || height <= 0 || widthUnits <= 0) return;
+		// Zoom is pixels per world unit: fit the wider of the two axes, never crop type.
+		current.zoom = Math.min((width * FILL) / widthUnits, (height * FILL) / depthUnits);
 		current.updateProjectionMatrix();
 	});
 
@@ -186,9 +202,13 @@
 	}
 </script>
 
-<BrutalistRender {paper} {ink} transparent {active} />
-
-<T.OrthographicCamera makeDefault position={[0, 11, 8]} near={0.1} far={60} oncreate={(ref) => ref.lookAt(0, 0, 0)} />
+<T.OrthographicCamera
+	makeDefault
+	position={[0, 11, 8]}
+	near={0.1}
+	far={60}
+	oncreate={(ref) => ref.lookAt(0, 0, 0)}
+/>
 
 <T.DirectionalLight
 	position={[-6, 8.5, 6]}
@@ -223,35 +243,42 @@
 		</RigidBody>
 	</T.Group>
 
-	{#each forme.letters as letter (letter.id)}
-		{@const face = faceGeometries.get(letter.char)}
-		{@const edges = edgeGeometries.get(letter.char)}
-		<T.Group position={place(letter)}>
-			<RigidBody
-				canSleep
-				ccd
-				linearDamping={1.2}
-				angularDamping={2.5}
-				enabledRotations={[false, true, false]}
-				oncreate={(body) => {
-					bodies.set(letter.id, body);
-					return () => bodies.delete(letter.id);
-				}}
-			>
-				<Collider
-					shape="cuboid"
-					args={[(CELL_W * EM * 0.98) / 2, BODY / 2, ((BOX_TOP - BOX_BOTTOM) * EM) / 2]}
-					mass={MASS}
-					friction={1.4}
-					restitution={0.05}
-				/>
-				{#if face && edges}
-					<T.Mesh geometry={face} castShadow receiveShadow>
-						<T.MeshStandardMaterial color={ink} roughness={0.95} metalness={0} />
-					</T.Mesh>
-					<T.LineSegments geometry={edges} material={outline} />
-				{/if}
-			</RigidBody>
-		</T.Group>
-	{/each}
+	<!-- A new forme is a new set of bodies: they must be cast at their new positions. -->
+	{#key forme}
+		{#each forme.letters as letter (letter.id)}
+			{@const face = sorts.faces.get(letter.char)}
+			{@const edges = sorts.edges.get(letter.char)}
+			<T.Group position={place(letter)}>
+				<RigidBody
+					canSleep
+					ccd
+					linearDamping={1.2}
+					angularDamping={2.5}
+					enabledRotations={[false, true, false]}
+					oncreate={(body) => {
+						bodies.set(letter.id, body);
+						return () => bodies.delete(letter.id);
+					}}
+				>
+					<Collider
+						shape="cuboid"
+						args={[
+							(letter.advance * EM * 0.98) / 2,
+							BODY / 2,
+							(LINE_PITCH * EM * SORT_FIT) / 2
+						]}
+						mass={MASS}
+						friction={1.4}
+						restitution={0.05}
+					/>
+					{#if face && edges}
+						<T.Mesh geometry={face} castShadow receiveShadow>
+							<T.MeshStandardMaterial color={ink} roughness={0.95} metalness={0} />
+						</T.Mesh>
+						<T.LineSegments geometry={edges} material={outline} />
+					{/if}
+				</RigidBody>
+			</T.Group>
+		{/each}
+	{/key}
 </World>

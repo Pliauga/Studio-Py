@@ -44,8 +44,8 @@ export const LIGHT_PALETTE: EditorPalette = {
  */
 export const DARK_PALETTE: EditorPalette = {
 	dark: true,
-	surface: '#000000',
-	ink: '#f1f1f1',
+	surface: 'var(--editor-surface, #000000)',
+	ink: 'var(--editor-ink, #f1f1f1)',
 	muted: '#a3a2a7',
 	keyword: '#f1f1f1',
 	builtin: '#40f51a',

@@ -37,6 +37,10 @@
 		sans-serif;
 	--font-body: 'Sorts Mill Goudy', 'Sorts Mill Goudy Fallback', 'Iowan Old Style', Georgia, serif;
 	--font-mono: 'Courier Prime', 'Courier Prime Fallback', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	/* The machine half of a lesson: a dot-matrix face for headers and controls, a plain
+	   monospace for reading. Both are self-hosted; the CSP allows no other font source. */
+	--font-pixel: 'VT323', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
+	--font-terminal: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
 
 	/*
 	 * MOTION
@@ -102,6 +106,22 @@ html[data-theme='dark'] {
 	font-style: normal;
 	font-display: swap;
 	src: url('/fonts/sorts-mill-goudy-400.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'VT323';
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+	src: url('/fonts/vt323-400.woff2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Share Tech Mono';
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+	src: url('/fonts/share-tech-mono-400.woff2') format('woff2');
 }
 
 @font-face {

@@ -9,11 +9,14 @@
 		ink: string;
 		/** Paper pixels render transparent so the page behind the canvas shows through. */
 		transparent?: boolean;
+		/** Print colours when they differ from the luminance palette (CRT phosphor, jam red). */
+		outPaper?: string;
+		outInk?: string;
 		/** Stops rendering (not the scene) while the canvas is off screen. */
 		active?: boolean;
 	};
 
-	let { paper, ink, transparent = false, active = true }: Props = $props();
+	let { paper, ink, transparent = false, active = true, outPaper, outInk }: Props = $props();
 
 	const { renderer, scene, camera, size, dpr, autoRender, renderStage } = useThrelte();
 
@@ -41,6 +44,10 @@
 
 	$effect(() => {
 		look.setPalette(paper, ink);
+	});
+
+	$effect(() => {
+		look.setOutput(outPaper ?? paper, outInk ?? ink);
 	});
 
 	useTask((delta) => composer.render(delta), {

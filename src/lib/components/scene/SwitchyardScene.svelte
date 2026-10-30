@@ -8,10 +8,12 @@
 
 	type Props = {
 		reduceMotion?: boolean;
+		/** A Python error froze the machine: nothing advances until the next run. */
+		jammed?: boolean;
 		onchange?: (running: number, paused: number, finished: number, snapshot: string) => void;
 	};
 
-	let { reduceMotion = false, onchange }: Props = $props();
+	let { reduceMotion = false, jammed = false, onchange }: Props = $props();
 
 	const DARK = '#111111';
 	const INK = '#101010';
@@ -186,7 +188,7 @@
 	});
 
 	useTask((delta) => {
-		if (reduceMotion) return;
+		if (reduceMotion || jammed) return;
 
 		let moving = false;
 		for (const task of tasks) {

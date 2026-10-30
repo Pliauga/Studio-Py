@@ -2,6 +2,7 @@
 	import { flushSync, onMount } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto, onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import AsciiSnake from '#lib/components/AsciiSnake.svelte';
 	import '../app.css';
 	import favicon from '#lib/assets/favicon.svg';
 	import { readEase, readMs } from '#lib/motion/timing.ts';
@@ -282,6 +283,34 @@
 		});
 	});
 
+	/** Three quick presses on the wordmark open the hidden cabinet; a single press still goes home. */
+	const SNAKE_CLICKS = 3;
+	const SNAKE_WINDOW_MS = 600;
+	let snakeOpen = $state(false);
+	let wordmarkClicks = 0;
+	let wordmarkTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function pressWordmark(event: MouseEvent): void {
+		if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+		event.preventDefault();
+		clearTimeout(wordmarkTimer);
+		wordmarkClicks += 1;
+		if (wordmarkClicks >= SNAKE_CLICKS) {
+			wordmarkClicks = 0;
+			snakeOpen = true;
+			return;
+		}
+		wordmarkTimer = setTimeout(() => {
+			wordmarkClicks = 0;
+			void goto('/');
+		}, SNAKE_WINDOW_MS);
+	}
+
+	$effect(() => {
+		if (snakeOpen) document.documentElement.dataset.snake = 'open';
+		else delete document.documentElement.dataset.snake;
+	});
+
 	function toggleTheme(): void {
 		applyTheme(theme === 'dark' ? 'light' : 'dark', true);
 	}
@@ -300,9 +329,11 @@
 </svelte:head>
 
 <header class="site-head">
-	<a class="wordmark" href="/">Studio Py</a>
+	<a class="wordmark" href="/" onclick={pressWordmark}>Studio Py</a>
 	{#if page.url.pathname.startsWith('/lesson/')}
 		<a class="back" href="/dashboard">← Index</a>
+	{:else if page.url.pathname === '/'}
+		<a class="back" href="/dashboard">-- INDEX</a>
 	{/if}
 	<button
 		class="mode"
@@ -319,10 +350,14 @@
 <div class="progress" aria-hidden="true"><div class="progress-fill" bind:this={progressBar}></div></div>
 
 {#key page.url.pathname}
-	<div class="page" class:routed style="view-transition-name: page-transition;">
+	<div class="page" class:routed inert={snakeOpen} style="view-transition-name: page-transition;">
 		{@render children()}
 	</div>
 {/key}
+
+{#if snakeOpen}
+	<AsciiSnake onclose={() => (snakeOpen = false)} />
+{/if}
 
 <!-- Portal: an ink plate floods from the clicked card, holds, then parts at its
      centre seam. The plate is page-sized from the start, so nothing reflows. -->
@@ -358,6 +393,21 @@
 	   portal. Content slides under it; nothing shows through. */
 	:global(:root) {
 		--head-h: 64px;
+	}
+
+	/* The cabinet pauses the page: scroll locks, every animation holds, nothing is clickable. */
+	:global(html[data-snake]) {
+		overflow: hidden;
+	}
+
+	:global(html[data-snake]) .page :global(*),
+	:global(html[data-snake]) .page :global(*::before),
+	:global(html[data-snake]) .page :global(*::after) {
+		animation-play-state: paused !important;
+	}
+
+	:global(html[data-snake]) .site-head {
+		pointer-events: none;
 	}
 
 	.site-head {

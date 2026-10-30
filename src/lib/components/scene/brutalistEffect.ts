@@ -3,10 +3,14 @@ import { Color, Uniform } from 'three';
 
 // 1-bit ordered dither + film grain. Darkness (0 = paper, 1 = ink) is the pixel's
 // luminance between the two palette colours, so a sheet of paper stays pure paper
-// and everything else is printed as an 8x8 Bayer screen of ink dots.
+// and everything else is printed as an 8x8 Bayer screen of ink dots. The output colours
+// are separate from the luminance palette, so the same screen can be printed in phosphor
+// green on charcoal or in crimson when the machine jams.
 const FRAGMENT = /* glsl */ `
 uniform vec3 uPaper;
 uniform vec3 uInk;
+uniform vec3 uPaperOut;
+uniform vec3 uInkOut;
 uniform float uCell;
 uniform float uGrain;
 uniform float uStep;
@@ -41,9 +45,9 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 	float grain = (hash(gl_FragCoord.xy + uStep) - 0.5) * 2.0 * uGrain;
 
 	if (uTransparent > 0.5) {
-		outputColor = vec4((uInk + grain) * ink, ink);
+		outputColor = vec4((uInkOut + grain) * ink, ink);
 	} else {
-		outputColor = vec4(mix(uPaper, uInk, ink) + grain, 1.0);
+		outputColor = vec4(mix(uPaperOut, uInkOut, ink) + grain, 1.0);
 	}
 }
 `;
@@ -62,6 +66,8 @@ export type BrutalistOptions = {
 export class BrutalistEffect extends Effect {
 	private readonly paper: Uniform<Color>;
 	private readonly ink: Uniform<Color>;
+	private readonly paperOut: Uniform<Color>;
+	private readonly inkOut: Uniform<Color>;
 	private readonly cell: Uniform<number>;
 	private readonly step: Uniform<number>;
 	private clock = 0;
@@ -69,6 +75,8 @@ export class BrutalistEffect extends Effect {
 	constructor({ paper, ink, transparent = false, grain = 0.01, cell = 1 }: BrutalistOptions) {
 		const paperUniform = new Uniform(new Color(paper));
 		const inkUniform = new Uniform(new Color(ink));
+		const paperOutUniform = new Uniform(new Color(paper));
+		const inkOutUniform = new Uniform(new Color(ink));
 		const cellUniform = new Uniform(cell);
 		const stepUniform = new Uniform(0);
 
@@ -77,6 +85,8 @@ export class BrutalistEffect extends Effect {
 			uniforms: new Map<string, Uniform>([
 				['uPaper', paperUniform],
 				['uInk', inkUniform],
+				['uPaperOut', paperOutUniform],
+				['uInkOut', inkOutUniform],
 				['uCell', cellUniform],
 				['uGrain', new Uniform(grain)],
 				['uStep', stepUniform],
@@ -86,6 +96,8 @@ export class BrutalistEffect extends Effect {
 
 		this.paper = paperUniform;
 		this.ink = inkUniform;
+		this.paperOut = paperOutUniform;
+		this.inkOut = inkOutUniform;
 		this.cell = cellUniform;
 		this.step = stepUniform;
 	}
@@ -93,6 +105,12 @@ export class BrutalistEffect extends Effect {
 	setPalette(paper: string, ink: string): void {
 		this.paper.value.set(paper);
 		this.ink.value.set(ink);
+	}
+
+	/** The colours the screen is printed in; the luminance palette above is untouched. */
+	setOutput(paper: string, ink: string): void {
+		this.paperOut.value.set(paper);
+		this.inkOut.value.set(ink);
 	}
 
 	setCell(pixels: number): void {

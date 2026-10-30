@@ -79,6 +79,13 @@
 	let themeFactory: ((theme: 'light' | 'dark') => Extension) | undefined;
 	let activeTheme: 'light' | 'dark' = 'light';
 
+	/** A lesson's CRT switch outranks the site theme: the terminal is dark, the print page light. */
+	function pageTheme(): 'light' | 'dark' {
+		const root = document.documentElement;
+		if (root.dataset.crt) return root.dataset.crt === 'on' ? 'dark' : 'light';
+		return root.dataset.theme === 'dark' ? 'dark' : 'light';
+	}
+
 	function themeExtensions(theme: 'light' | 'dark'): Extension {
 		return themeFactory ? themeFactory(theme) : [];
 	}
@@ -176,7 +183,7 @@
 
 	onMount(() => {
 		unmounted = false;
-		activeTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+		activeTheme = pageTheme();
 
 		let disposed = false;
 		let editorObserver: IntersectionObserver | undefined;
@@ -237,7 +244,7 @@
 		}
 
 		const themeObserver = new MutationObserver(() => {
-			const next = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+			const next = pageTheme();
 			if (next === activeTheme) return;
 			activeTheme = next;
 			if (!themeCompartment) return;
@@ -245,7 +252,7 @@
 		});
 		themeObserver.observe(document.documentElement, {
 			attributes: true,
-			attributeFilter: ['data-theme']
+			attributeFilter: ['data-theme', 'data-crt']
 		});
 
 		// The interpreter is a 12 MB download. Hold it until the exercise is

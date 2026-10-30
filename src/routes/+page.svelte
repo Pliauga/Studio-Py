@@ -27,19 +27,7 @@
 	let poster = $state<HTMLImageElement | null>(null);
 	let entering = false;
 
-	const HEADLINE = ['Stop Learning.', 'Start Patching.'] as const;
-	/** A phone is too narrow for 14-character lines: the forme stacks to one word per line. */
-	const HEADLINE_STACKED = ['Stop', 'Learning.', 'Start', 'Patching.'] as const;
-
-	/** The two WebGL canvases are their own chunks: the poster and the words paint first. */
 	let HalftonePlate = $state.raw<Component<{ reduceMotion: boolean }> | null>(null);
-	let HeroType = $state.raw<Component<{
-		lines: readonly string[];
-		reduceMotion: boolean;
-		onready: () => void;
-	}> | null>(null);
-	let typeSet = $state(false);
-	let stacked = $state(false);
 	let reduceMotion = $state(false);
 
 	const toCell = (px: number) => Math.round(px / CELL_PX);
@@ -50,18 +38,15 @@
 
 	onMount(() => {
 		reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		stacked = window.matchMedia('(max-width: 599px)').matches;
 
 		void import('#lib/components/scene/HalftonePlate.svelte').then((module) => {
 			HalftonePlate = module.default;
-		});
-		void import('#lib/components/scene/HeroType.svelte').then((module) => {
-			HeroType = module.default;
 		});
 
 		completedCount = MODULES.filter(
 			(module) => progress.statusOf(module.slug) === 'completed'
 		).length;
+
 	});
 
 	async function enter(event: MouseEvent): Promise<void> {
@@ -173,12 +158,7 @@
 	</figure>
 
 	<div class="readout">
-		<div class="headline-set" class:stacked>
-			{#if HeroType}
-				<HeroType lines={stacked ? HEADLINE_STACKED : HEADLINE} {reduceMotion} onready={() => (typeSet = true)} />
-			{/if}
-			<h1 class="headline" class:set={typeSet}>Stop Learning.<br />Start Patching.</h1>
-		</div>
+		<h1 class="headline">Stop Learning.<br />Start Patching.</h1>
 		<p class="standfirst">
 			A psychological incident-response curriculum for Python. Every waypoint is a broken system.
 			Read the traceback. Find the trap. Fix the file. No playgrounds. No excuses.
@@ -192,6 +172,7 @@
 		<p class="terminal-caption">
 			{pad(completedCount)} / {pad(MODULES.length)} complete
 		</p>
+		<a class="full-index" href="/dashboard" onclick={enter}>&gt; [ ACCESS_FULL_INDEX ]</a>
 	</div>
 </main>
 
@@ -201,11 +182,8 @@
 </div>
 
 <style>
-	/* The seam: a printed plate on the left, a machine readout on the right. The lamp keeps
-	   the centre lifted off the page and falls back to the theme paper, so the route
-	   background stays seamless in both themes. */
+	/* Flat print: the paper and typography carry the composition without a lighting effect. */
 	.hero {
-		--lamp: #f8f8f8;
 		position: relative;
 		isolation: isolate;
 		display: grid;
@@ -214,11 +192,6 @@
 		gap: clamp(24px, 4.5vw, 88px);
 		min-height: 100svh;
 		padding: clamp(84px, 9vh, 132px) clamp(20px, 4vw, 64px) clamp(40px, 6vh, 72px);
-		background: radial-gradient(ellipse 65% 60% at 50% 46%, var(--lamp) 0%, var(--color-paper) 100%);
-	}
-
-	:global(html[data-theme='dark']) .hero {
-		--lamp: #1a1a1a;
 	}
 
 	/* The figure is exactly as wide as the print, so the captions align to its left edge. */
@@ -326,6 +299,23 @@
 		color: var(--color-tertiary);
 	}
 
+	.full-index {
+		margin-top: -6px;
+		font-family: var(--font-terminal);
+		font-size: 12px;
+		line-height: 1.4;
+		letter-spacing: 0.12em;
+		color: var(--color-ink);
+		text-decoration: none;
+	}
+
+	.full-index:hover,
+	.full-index:focus-visible {
+		color: #33ff00;
+		text-decoration: underline;
+		text-underline-offset: 0.4em;
+	}
+
 	.readout {
 		display: flex;
 		flex-direction: column;
@@ -335,34 +325,19 @@
 		min-width: 0;
 	}
 
-	/* The type forme is steel on a press bed; the h1 is the same words for readers,
-	   search and the moment before the type has loaded. */
-	.headline-set {
-		position: relative;
-		width: 100%;
-		aspect-ratio: 18 / 5;
-	}
-
-	.headline-set.stacked {
-		aspect-ratio: 8 / 5;
-	}
-
-	.headline.set {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		white-space: nowrap;
-	}
-
 	.headline {
 		margin: 0;
-		font-family: var(--font-body);
-		font-size: clamp(2.45rem, 4vw, 4.1rem);
-		font-weight: 400;
-		line-height: 0.98;
-		letter-spacing: -0.025em;
-		text-wrap: balance;
+		font-family: var(--font-display);
+		font-size: clamp(4rem, 8vw, 8rem);
+		font-weight: 900;
+		line-height: 0.9;
+		letter-spacing: -0.04em;
+		color: #000000;
+	}
+
+	/* Black ink needs paper: on the dark theme the ink token carries the same job. */
+	:global(html[data-theme='dark']) .headline {
+		color: var(--color-ink);
 	}
 
 	.standfirst {
@@ -432,9 +407,6 @@
 			gap: clamp(20px, 3vw, 56px);
 		}
 
-		.headline {
-			font-size: clamp(2.2rem, 4.2vw, 3.3rem);
-		}
 	}
 
 	/* Poster first, then the readout — the correct read on a phone. */
@@ -461,7 +433,7 @@
 		}
 
 		.headline {
-			font-size: clamp(2.05rem, 7.6vw, 2.9rem);
+			font-size: clamp(3.5rem, 12vw, 6rem);
 		}
 
 		.standfirst {

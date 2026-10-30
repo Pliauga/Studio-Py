@@ -1,10 +1,11 @@
 // Regression guard for the live surfaces: what a run does to the poster, what a
 // failed run shows, and where the lesson snake rests. Run with
 // `node --experimental-strip-types scripts/check-live.mjs`.
+import { readFileSync } from 'node:fs';
 import { densityFromRun, faultLine } from '../src/lib/pyexercise/terminal.ts';
 import { headOffset } from '../src/lib/motion/trail.ts';
 import { JAM_MS, misregistration } from '../src/lib/motion/misregistration.ts';
-import { CELL_W, layoutForme } from '../src/lib/motion/letterpress.ts';
+import { LINE_PITCH, layoutForme } from '../src/lib/motion/letterpress.ts';
 
 const DISK = (used, total = 100) => `disk = {"used_gb": ${used}, "total_gb": ${total}}`;
 
@@ -61,9 +62,25 @@ CASES.push(
 );
 
 const SWEEP = Array.from({ length: JAM_MS + 1 }, (_, ms) => misregistration(ms));
-const FORME = layoutForme(['Stop Learning.', 'Start Patching.']);
-const FIRST = FORME.letters[0];
-const LAST = FORME.letters.at(-1);
+
+// The forme is measured off the very font the hero ships, so the guard fails if
+// either the typeface or the layout drifts away from the other.
+const METRICS = JSON.parse(
+	readFileSync(new URL('../static/fonts/inter-black.typeface.json', import.meta.url), 'utf8')
+);
+const advance = (char) => METRICS.glyphs[char].ha / METRICS.resolution;
+const measure = (text) =>
+	Array.from(text).reduce((total, char) => total + advance(char), 0);
+
+const FORME = layoutForme(['Stop Learning.', 'Start Patching.'], METRICS);
+const STACKED = layoutForme(['Stop', 'Learning.', 'Start', 'Patching.'], METRICS);
+const ROW0 = FORME.letters.filter((letter) => letter.row === 0);
+const ROW1 = FORME.letters.filter((letter) => letter.row === 1);
+/** Ink bounds of a laid-out line: proportional type has no fixed cell. */
+const span = (row) => [
+	row[0].x - advance(row[0].char) / 2,
+	row.at(-1).x + advance(row.at(-1).char) / 2
+];
 
 CASES.push(
 	['press at rest before the run', misregistration(0), 0],
@@ -76,12 +93,20 @@ CASES.push(
 	['non-finite time is treated as at rest', misregistration(Number.NaN), 0],
 
 	['spaces are not blocks: 13 + 14 glyphs', FORME.letters.length, 27],
-	['first block is the S of Stop', FIRST.char, 'S'],
-	['first line is centred on the bed', approx(FIRST.x, -6.5 * CELL_W), true],
-	['second line is centred on the bed', approx(LAST.x, 7 * CELL_W), true],
-	['line one sits behind line two', FIRST.z < LAST.z, true],
-	['widest line sets the forme width', approx(FORME.width, 15 * CELL_W), true],
-	['block ids are unique', new Set(FORME.letters.map((l) => l.id)).size, 27]
+	['first block is the S of Stop', FORME.letters[0].char, 'S'],
+	['second line starts on a new row', ROW1[0].row, 1],
+	['line one is centred on the bed', approx(span(ROW0)[0], -measure('Stop Learning.') / 2), true],
+	['line one ends where its measure ends', approx(span(ROW0)[1], measure('Stop Learning.') / 2), true],
+	['line two is centred on the bed', approx(span(ROW1)[0], -measure('Start Patching.') / 2), true],
+	['line one sits behind line two', approx(ROW1[0].z - ROW0[0].z, LINE_PITCH), true],
+	['widest line sets the forme width', approx(FORME.width, measure('Start Patching.')), true],
+	['the forme is as deep as its lines', approx(FORME.depth, 2 * LINE_PITCH), true],
+	['block ids are unique', new Set(FORME.letters.map((l) => l.id)).size, 27],
+
+	['a phone formes the headline as four lines', STACKED.letters.length, 27],
+	['the longest word sets the stacked width', approx(STACKED.width, measure('Patching.')), true],
+	['stacking narrows the forme', STACKED.width < FORME.width, true],
+	['stacked lines stay one pitch apart', approx(STACKED.depth, 4 * LINE_PITCH), true]
 );
 
 let failures = 0;

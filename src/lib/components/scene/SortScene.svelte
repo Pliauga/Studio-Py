@@ -7,10 +7,12 @@
 
 	type Props = {
 		reduceMotion?: boolean;
+		/** A Python error froze the machine: nothing advances until the next run. */
+		jammed?: boolean;
 		onchange?: (count: number, values: number[], marked: number) => void;
 	};
 
-	let { reduceMotion = false, onchange }: Props = $props();
+	let { reduceMotion = false, jammed = false, onchange }: Props = $props();
 
 	const MAX_PILLARS = 12;
 	const SPACING = 0.94;
@@ -212,7 +214,7 @@
 	});
 
 	useTask((delta) => {
-		if (reduceMotion) return;
+		if (reduceMotion || jammed) return;
 
 		const now = performance.now();
 		while (pending.length > 0 && pending[0].at <= now) {

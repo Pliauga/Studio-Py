@@ -1,13 +1,16 @@
 """Converts the glyphs of a TrueType font into a Three.js typeface.json.
 
-Usage: python3 scripts/build-typeface.py FONT.ttf "text to cover" > OUT.typeface.json
+Usage: python3 scripts/build-typeface.py FONT.ttf "text to cover" [WEIGHT=900] > OUT.typeface.json
 Only the characters in the text are emitted, so the hero's font stays a few KB.
+A variable font is pinned to WEIGHT before its outlines are read, which is how
+Inter becomes the hero's steel: one static instance, baked at build time.
 """
 import json
 import sys
 
 from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
 
 
 class TypefacePen(BasePen):
@@ -34,8 +37,17 @@ class TypefacePen(BasePen):
         pass
 
 
-def main(path, text):
+def pin_weight(font, weight):
+    """Collapses a variable font to one static instance; a static font is returned as-is."""
+    if "fvar" not in font:
+        return font
+    return instantiateVariableFont(font, {"wght": weight}, inplace=False, updateFontNames=True)
+
+
+def main(path, text, weight=None):
     font = TTFont(path)
+    if weight is not None:
+        font = pin_weight(font, weight)
     glyph_set = font.getGlyphSet()
     cmap = font.getBestCmap()
     hmtx = font["hmtx"]
@@ -66,4 +78,4 @@ def main(path, text):
     json.dump(typeface, sys.stdout, separators=(",", ":"))
 
 
-main(sys.argv[1], sys.argv[2])
+main(sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else None)

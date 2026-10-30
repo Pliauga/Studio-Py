@@ -53,3 +53,13 @@ __pycache__/
 
 # Evidence logs
 evidence/
+AGENTS.md
+AGENTS.md.sha256
+JOB.md
+JOB.md.sha256
+AGENTS.md
+AGENTS.md.sha256
+JOB.md
+JOB.md.sha256
+tools/
+EDGE_CASE_EVIDENCE.md

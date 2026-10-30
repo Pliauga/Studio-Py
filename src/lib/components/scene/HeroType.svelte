@@ -15,7 +15,8 @@
 
 	let { lines, reduceMotion, onready }: Props = $props();
 
-	const FONT_URL = '/fonts/courier-prime-700.typeface.json';
+	// Inter Black, pinned to wght 900: steel type, not typewriter.
+	const FONT_URL = '/fonts/inter-black.typeface.json';
 
 	let stage = $state<HTMLDivElement>();
 	let font = $state.raw<Font>();

@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { Canvas } from '@threlte/core';
+	import { World } from '@threlte/rapier';
+	import { NoToneMapping, PCFShadowMap } from 'three';
+	import Monitor from '#lib/components/scene/Monitor.svelte';
 	import InkStamp from '#lib/components/InkStamp.svelte';
 	import RegistrationMarks from '#lib/components/RegistrationMarks.svelte';
 	import SnakeSpine from '#lib/components/SnakeSpine.svelte';
@@ -7,6 +11,7 @@
 	import { MODULES } from '#lib/content/lessons.ts';
 	import { lessonComponent } from '#lib/content/lessonModules.ts';
 	import { sizeTier } from '#lib/content/chapters.ts';
+	import AsciiOperator from '#lib/components/AsciiOperator.svelte';
 	import { progress, STATUS_LABEL } from '#lib/stores/progress.svelte.ts';
 	import type { PageProps } from './$types';
 
@@ -29,13 +34,46 @@
 	let article = $state<HTMLElement | null>(null);
 	/** Where the snake's head rests along the article: the waypoint the reader is on. */
 	let waypoint = $state(0);
+	/** The machine half is the default; the print half is one switch away. */
+	let crtMode = $state(true);
+	/** Set only by the switch, so the scanlines flicker out on a toggle and not on first paint. */
+	let flickering = $state(false);
+	/** The 3D bezel is client-only; the CSS frame stands in for it on the server. */
+	let mounted = $state(false);
+	const CRT_STORAGE_KEY = 'studio-py:crt-mode';
+
+	function toggleCrt(): void {
+		crtMode = !crtMode;
+		flickering = !crtMode;
+		try {
+			localStorage.setItem(CRT_STORAGE_KEY, String(crtMode));
+		} catch {
+			/* Storage can be blocked; the hardware switch still works for this visit. */
+		}
+	}
 
 	// Reading the article is what marks a lesson opened; `complete()` is the
 	// only explicit act, so the dashboard never overstates progress.
 	onMount(() => {
+		mounted = true;
+		try {
+			crtMode = localStorage.getItem(CRT_STORAGE_KEY) !== 'false';
+		} catch {
+			/* Storage can be blocked; the machine default applies. */
+		}
 		if (progress.statusOf(module.slug) === 'not-started') progress.set(module.slug, 'in-progress');
-		if (!trail || !article) return;
-		return trackWaypoints(trail, article, (percent) => (waypoint = percent));
+
+		const stopTrail = trail && article ? trackWaypoints(trail, article, (percent) => (waypoint = percent)) : undefined;
+		return () => {
+			stopTrail?.();
+			delete document.documentElement.dataset.crt;
+		};
+	});
+
+	// The mode lives on `<html>` so the header, the body paper, the editor and the sandbox
+	// all read one switch; the inline script in app.html sets it before first paint.
+	$effect(() => {
+		document.documentElement.dataset.crt = crtMode ? 'on' : 'off';
 	});
 
 	function toggleComplete(): void {
@@ -48,7 +86,33 @@
 	<meta name="description" content={module.summary} />
 </svelte:head>
 
-<main class="reader">
+<div
+	class="crt-scan"
+	class:on={crtMode}
+	class:flicker={flickering}
+	onanimationend={() => (flickering = false)}
+	aria-hidden="true"
+></div>
+
+{#if crtMode}
+	<div class="screen-bg" aria-hidden="true"></div>
+	<div class="bezel-layer" aria-hidden="true">
+		{#if mounted}
+			<Canvas renderMode="on-demand" toneMapping={NoToneMapping} shadows={PCFShadowMap} dpr={[1, 2]}>
+				<World autoStart={false} gravity={[0, 0, 0]}>
+					<Monitor />
+				</World>
+			</Canvas>
+		{/if}
+	</div>
+	<div class="glass-layer" aria-hidden="true"></div>
+{/if}
+
+<div class="lesson-content" class:crt={crtMode}>
+{#if crtMode}
+	<AsciiOperator />
+{/if}
+<main class="reader" class:crt={crtMode}>
 	<div class="sheet">
 		<RegistrationMarks />
 
@@ -64,7 +128,19 @@
 					<span class="sep">—</span>
 					Week {pad(module.week)} · {module.estimatedMinutes} min · {STATUS_LABEL[status]}
 				</p>
-				<h1 id={headingId} aria-label={module.title}>{module.title}</h1>
+				<button
+					class="crt-switch"
+					type="button"
+					role="switch"
+					aria-checked={crtMode}
+					aria-label="CRT mode"
+					onclick={toggleCrt}
+				>
+					<span class="crt-label">CRT MODE:</span>
+					<span class="pos" class:active={crtMode}>[ ON ]</span>
+					<span class="pos" class:active={!crtMode}>[ OFF ]</span>
+				</button>
+				<h1 id={headingId} aria-label={module.title} data-text={module.title}>{module.title}</h1>
 				<p class="lede">{module.summary}</p>
 			</div>
 			{#if status === 'completed'}
@@ -91,7 +167,7 @@
 				<span class="signoff-label">Module sign-off // Plate {pad(module.week + 2)}</span>
 				<div class="signoff-act">
 					<button class="complete" class:on={status === 'completed'} onclick={toggleComplete}>
-						{status === 'completed' ? 'Completed' : 'Mark as complete'}
+						{status === 'completed' ? '[ > SIGN_OFF_RECORDED ]' : '[ > INITIATE_SIGN_OFF ]'}
 					</button>
 					<span class="stamp">{STATUS_LABEL[status]}</span>
 				</div>
@@ -100,7 +176,7 @@
 			<nav class="pager" aria-label="Module navigation">
 				{#if previous}
 					<a class="cell" href={`/lesson/${previous.slug}`}>
-						<span class="dir">← Week {pad(previous.week)}</span>
+						<span class="dir">[ &lt; RETURN_TO_WAYPOINT_{pad(previous.week)} ]</span>
 						<span class="pager-title">{previous.title}</span>
 					</a>
 				{:else}
@@ -108,7 +184,7 @@
 				{/if}
 				{#if next}
 					<a class="cell right" href={`/lesson/${next.slug}`}>
-						<span class="dir">Week {pad(next.week)} →</span>
+						<span class="dir">[ &gt; ADVANCE_TO_WAYPOINT_{pad(next.week)} ]</span>
 						<span class="pager-title">{next.title}</span>
 					</a>
 				{:else}
@@ -118,8 +194,543 @@
 		</footer>
 	</div>
 </main>
+</div>
 
 <style>
+	/* ---- The machine half ------------------------------------------------------------
+	   The mode is a switch on <html>, so the header, body paper, editor and sandbox all
+	   read the same palette. ON is a 1970s mainframe terminal; OFF is the printed page. */
+	:global(:root[data-crt='on'][data-theme]) {
+		color-scheme: dark;
+		--color-paper: #0a0a0a;
+		--color-ink: #e0e0e0;
+		--color-tertiary: #a8a8a8;
+		--color-muted: var(--color-tertiary);
+		--color-line-faint: rgba(224, 224, 224, 0.16);
+		--code-inline-bg: #1c1c1c;
+		--syntax-keyword: #e0e0e0;
+		--syntax-builtin: #33ff00;
+		--syntax-string: #a8a8a8;
+		--syntax-function: #e0e0e0;
+		--syntax-number: #33ff00;
+		--syntax-comment: #777777;
+	}
+
+	:global(:root[data-crt='off'][data-theme]) {
+		color-scheme: light;
+		--color-paper: #f1f1f1;
+		--color-ink: #000000;
+		--color-tertiary: #5a595e;
+		--color-muted: var(--color-tertiary);
+		--color-line-faint: rgba(0, 0, 0, 0.14);
+		--code-inline-bg: #e5e5e5;
+		--syntax-keyword: #000000;
+		--syntax-builtin: #005c8c;
+		--syntax-string: #005c8c;
+		--syntax-function: #000000;
+		--syntax-number: #005c8c;
+		--syntax-comment: #828282;
+	}
+
+	/* A monitor warming up or cooling down: paper, ink and scanlines move together. */
+	:global(html[data-crt] body),
+	:global(html[data-crt] .site-head),
+	.reader,
+	.sheet {
+		transition: all 0.2s ease-out;
+	}
+
+	/* The scanlines are the screen's own life: a fixed raster that drifts slowly. */
+	.crt-scan {
+		position: fixed;
+		inset: 0;
+		z-index: 50;
+		background: repeating-linear-gradient(
+			to bottom,
+			transparent 0 2px,
+			rgba(0, 0, 0, 0.15) 2px 4px
+		);
+		background-size: 100% 8px;
+		opacity: 0;
+		pointer-events: none;
+		transition: all 0.2s ease-out;
+	}
+
+	.crt-scan.on {
+		opacity: 1;
+		animation: scan-drift 6s linear infinite;
+	}
+
+	/* Switching off is a tube losing power, not a fade: a few hard flickers, then dark. */
+	.crt-scan.flicker {
+		animation: crt-flicker 360ms steps(1, end) forwards;
+	}
+
+	@keyframes scan-drift {
+		to {
+			background-position: 0 8px;
+		}
+	}
+
+	@keyframes crt-flicker {
+		0% {
+			opacity: 1;
+		}
+		20% {
+			opacity: 0.25;
+		}
+		40% {
+			opacity: 0.9;
+		}
+		60% {
+			opacity: 0.1;
+		}
+		80% {
+			opacity: 0.5;
+		}
+		100% {
+			opacity: 0;
+		}
+	}
+
+	/* ---- The chassis ------------------------------------------------------------------
+	   The monitor is permanent chrome fixed to the viewport; the lesson scrolls natively
+	   beneath it, so the sticky console and the window scroll stay on the fast path. The
+	   screen tint sits behind the text, the glass over it, the 3D bezel over both, and
+	   below the site header. */
+	.screen-bg,
+	.bezel-layer,
+	.glass-layer {
+		--bezel-w: clamp(24px, 5vw, 72px);
+		position: fixed;
+		inset: var(--head-h) 0 0;
+		pointer-events: none;
+	}
+
+	.screen-bg {
+		z-index: 0;
+		background: radial-gradient(ellipse at center, #0b2c18 0%, #02100a 60%, #0a0a0a 100%);
+	}
+
+	/* The gradient frame is the server-rendered stand-in until the 3D bezel mounts. */
+	.bezel-layer :global(div),
+	.bezel-layer :global(canvas) {
+		background: transparent;
+	}
+
+	.bezel-layer {
+		z-index: 2;
+		box-shadow: inset 0 0 0 var(--bezel-w) #2e2d28;
+	}
+
+	/* The glass fills the screen hole, above the bezel, so its outer glow lands on the lip:
+	   the text appears to light the plastic around it. */
+	.glass-layer {
+		inset: calc(var(--head-h) + var(--bezel-w)) var(--bezel-w) var(--bezel-w);
+		z-index: 3;
+		border-radius: 6% / 8%;
+		background: repeating-linear-gradient(
+			to bottom,
+			rgba(0, 0, 0, 0.4) 0px,
+			rgba(0, 0, 0, 0.4) 1px,
+			transparent 1px,
+			transparent 3px
+		);
+		box-shadow:
+			inset 0 0 150px rgba(0, 0, 0, 1),
+			0 0 40px rgba(51, 255, 0, 0.1);
+		backdrop-filter: brightness(1.05);
+	}
+
+	/* The vignette darkens the corners; the glare is a fluorescent reflection. */
+	.glass-layer::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background: radial-gradient(circle at center, transparent 60%, rgba(0, 0, 0, 0.7) 100%);
+	}
+
+	.glass-layer::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 30%);
+	}
+
+	.lesson-content {
+		position: relative;
+		z-index: 1;
+	}
+
+	.lesson-content.crt {
+		padding: 12vh 10vw;
+	}
+
+	.reader {
+		position: relative;
+		z-index: 1;
+	}
+
+	.reader.crt {
+		padding: 0;
+	}
+
+	/* ---- The phosphor ----------------------------------------------------------------
+	   Bloom and fringing belong to headers and controls. Reading text and code stay
+	   still, soft and unglowing so a lesson can be read for fifteen minutes. */
+	:global(:root[data-crt='on'][data-theme]) {
+		--font-body: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
+		--font-mono: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
+		--editor-surface: #051a05;
+		--editor-ink: #e0ffe0;
+		--syntax-keyword: #e0ffe0;
+		--syntax-function: #e0ffe0;
+		--syntax-string: #9be89b;
+		--syntax-comment: #5f9a5f;
+	}
+
+	/* Reading text and code: pale phosphor white, a tight crisp glow, no bloom, no fringing.
+	   Pure green is kept for headers, frames and bloom. */
+	.reader.crt .prose {
+		color: #e0ffe0;
+		line-height: 1.55;
+		text-shadow: 0 0 2px rgba(51, 255, 0, 0.4);
+	}
+
+	/* Headers: a white-hot core with a tight halo; the wide bloom is a blurred green copy
+	   behind it, read from `data-text`, so the light bleeds without softening a glyph. */
+	.reader.crt h1,
+	.reader.crt .prose :global(h2) {
+		position: relative;
+		isolation: isolate;
+		z-index: 1;
+		font-family: var(--font-pixel);
+		font-weight: 400;
+		letter-spacing: 0;
+		color: #e6ffe6;
+		text-shadow:
+			0 0 2px #a3ffa3,
+			0 0 4px #00ff00;
+	}
+
+	.reader.crt h1::after,
+	.reader.crt .prose :global(h2)::after {
+		content: attr(data-text);
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: -1;
+		color: #00ff00;
+		filter: blur(8px);
+		opacity: 0.8;
+		mix-blend-mode: screen;
+		pointer-events: none;
+		user-select: none;
+	}
+
+	.reader.crt .prose :global(h2)::after {
+		top: 10px;
+	}
+
+	.reader.crt h1 {
+		font-size: calc(var(--display) * 1.3);
+		line-height: 0.85;
+	}
+
+	.reader.crt .prose :global(h2) {
+		font-size: clamp(40px, 4.6vw, 72px);
+		line-height: 0.9;
+	}
+
+	.reader.crt .stamp,
+	.reader.crt .signoff-label,
+	.reader.crt .dir,
+	.reader.crt .prose :global(.trap .trap-head) {
+		font-family: var(--font-pixel);
+		font-size: 1.5rem;
+		letter-spacing: 0.1em;
+	}
+
+	/* ---- The hardware switch ---------------------------------------------------------- */
+	.crt-switch {
+		display: inline-flex;
+		margin: 0 0 24px;
+		align-items: stretch;
+		gap: 0;
+		padding: 0;
+		border: 3px solid #0b0b0b;
+		border-radius: 4px;
+		background: #1f1f1f;
+		box-shadow:
+			inset 0 4px 8px rgba(0, 0, 0, 0.8),
+			inset 0 -2px 0 rgba(255, 255, 255, 0.1),
+			0 4px 0 #000,
+			0 6px 10px rgba(0, 0, 0, 0.6);
+		font-family: var(--font-pixel);
+		font-size: 1.6rem;
+		line-height: 1;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: #cfcfcf;
+		cursor: pointer;
+		transition:
+			transform 60ms linear,
+			box-shadow 60ms linear;
+	}
+
+	/* Pressed into the bezel: it drops, and the light moves from outside to inside. */
+	.crt-switch:active {
+		transform: translateY(2px);
+		box-shadow:
+			inset 0 -4px 8px rgba(0, 0, 0, 0.8),
+			inset 0 2px 0 rgba(255, 255, 255, 0.08),
+			0 1px 0 #000,
+			0 2px 4px rgba(0, 0, 0, 0.6);
+	}
+
+	.crt-switch .crt-label,
+	.crt-switch .pos {
+		padding: 0.7rem 1.1rem;
+	}
+
+	.crt-switch .crt-label {
+		border-right: 2px solid #0b0b0b;
+	}
+
+	.crt-switch .pos {
+		opacity: 0.55;
+	}
+
+	.crt-switch .pos.active {
+		background: #f1f1f1;
+		color: #0a0a0a;
+		font-weight: 400;
+		opacity: 1;
+	}
+
+	:global(html[data-crt='on']) .crt-switch .pos.active {
+		background: #33ff00;
+		box-shadow: 0 0 8px rgba(51, 255, 0, 0.6);
+	}
+
+	.crt-switch:focus-visible {
+		outline: 2px solid #33ff00;
+		outline-offset: 4px;
+	}
+
+	/* Controls on the machine half: phosphor on black, inverted when pressed. */
+	.reader.crt .complete {
+		border: 2px solid #33ff00;
+		background: transparent;
+		font-family: var(--font-pixel);
+		font-size: 1.7rem;
+		color: #33ff00;
+		text-shadow:
+			0 0 5px rgba(51, 255, 0, 0.9),
+			0 0 15px rgba(51, 255, 0, 0.6),
+			0 0 30px rgba(51, 255, 0, 0.3);
+	}
+
+	.reader.crt .complete:hover,
+	.reader.crt .complete:focus-visible,
+	.reader.crt .complete.on {
+		background: #33ff00;
+		color: #0a0a0a;
+		text-shadow: none;
+	}
+
+	.reader.crt .complete.on:hover,
+	.reader.crt .complete.on:focus-visible {
+		background: transparent;
+		color: #33ff00;
+		text-shadow:
+			0 0 5px rgba(51, 255, 0, 0.9),
+			0 0 15px rgba(51, 255, 0, 0.6),
+			0 0 30px rgba(51, 255, 0, 0.3);
+	}
+
+	.reader.crt .pager .dir {
+		color: #33ff00;
+		text-shadow:
+			0 0 5px rgba(51, 255, 0, 0.9),
+			0 0 15px rgba(51, 255, 0, 0.6),
+			0 0 30px rgba(51, 255, 0, 0.3);
+	}
+
+	/* The instrument panel: no keylines. Each sub-system is a dark well sunk into the glass,
+	   edged by a molded-plastic outline and divided from its neighbour by a gutter. The
+	   narrative well is a grid-spanning layer behind the heading and the body. */
+	.reader.crt .prose :global(.chapter.split) {
+		column-gap: 2rem;
+	}
+
+	.reader.crt .prose :global(.chapter)::before {
+		content: '';
+		grid-area: 1 / 1 / 3 / 2;
+		align-self: stretch;
+		justify-self: stretch;
+		z-index: 0;
+		background: #030a03;
+		outline: 2px solid #0a150a;
+		border-radius: 8px;
+		box-shadow:
+			inset 0 4px 15px rgba(0, 0, 0, 0.9),
+			inset 0 0 2px rgba(0, 0, 0, 1);
+	}
+
+	.reader.crt .prose :global(.chapter .pin),
+	.reader.crt .prose :global(.chapter .chapter-body) {
+		position: relative;
+		z-index: 1;
+		padding: 0 20px;
+	}
+
+	.reader.crt .prose :global(.chapter .chapter-body) {
+		align-self: stretch;
+		margin-bottom: 0;
+		padding-bottom: 20px;
+	}
+
+	.reader.crt .prose :global(.chapter .pin-inner) {
+		margin: 0 0 12px;
+	}
+
+	.reader.crt .prose :global(.chapter .console-slot) {
+		box-sizing: border-box;
+		margin-top: 0;
+		padding: 0 20px 20px;
+		overflow-y: auto;
+		background: #030a03;
+		outline: 2px solid #0a150a;
+		border-radius: 8px;
+		box-shadow:
+			inset 0 4px 15px rgba(0, 0, 0, 0.9),
+			inset 0 0 2px rgba(0, 0, 0, 1);
+	}
+
+	.reader.crt .prose :global(.chapter .pin)::before,
+	.reader.crt .prose :global(.chapter .console-slot)::before {
+		content: '> SYSTEM.LOG: NARRATIVE';
+		display: block;
+		margin: 0 -20px 20px;
+		padding: 0.35rem 20px;
+		border-radius: 8px 8px 0 0;
+		background: rgba(51, 255, 0, 0.08);
+		font-family: var(--font-pixel);
+		font-size: 1.25rem;
+		line-height: 1.2;
+		letter-spacing: 0.1em;
+	}
+
+	.reader.crt .prose :global(.chapter .console-slot)::before {
+		content: '> SYSTEM.LOG: EXECUTION';
+		position: sticky;
+		top: 0;
+		z-index: 5;
+		flex: 0 0 auto;
+		margin-bottom: 0;
+		background: #0a1f0a;
+	}
+
+	.reader.crt .prose :global(.chapter .console-slot.telemetry)::before {
+		content: '> SYSTEM.LOG: TELEMETRY';
+	}
+
+	.reader.crt .prose :global(.console-slot > .exercise:only-child) {
+		margin-top: 0;
+	}
+
+	.reader.crt .prose :global(.console-slot .scene-col) {
+		background: #030a03;
+	}
+
+	.reader.crt .prose :global(.chapter .spine) {
+		display: none;
+	}
+
+	/* The console and editor are recessed into the screen: a dark well inside, a phosphor
+	   ring outside. The well is drawn on an overlay because the editor and canvas paint
+	   their own backgrounds over an inset shadow on the box. */
+	.reader.crt .prose :global(.editor-wrapper),
+	.reader.crt .prose :global(.console-slot .sandbox-embed .frame) {
+		position: relative;
+		border: 0;
+		background: #051a05;
+		box-shadow: 0 0 0 2px #33ff00;
+	}
+
+	.reader.crt .prose :global(.editor-wrapper)::after,
+	.reader.crt .prose :global(.console-slot .sandbox-embed .frame)::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: 3;
+		box-shadow: inset 0 4px 15px rgba(0, 0, 0, 0.9);
+		pointer-events: none;
+	}
+
+	@media (max-width: 700px) {
+		.lesson-content.crt {
+			padding-inline: 6vw;
+		}
+	}
+
+	/* The trap: a hazard label, thick amber on both palettes. */
+	.prose :global(.trap) {
+		max-width: 100ch;
+		margin: 28px 0 16px;
+		border: 4px solid #ffb000;
+		border-top: 0;
+		background: rgba(255, 176, 0, 0.05);
+	}
+
+	/* Black and amber hazard stripe on the top edge only; the body stays a plain tint. */
+	.prose :global(.trap)::before {
+		content: '';
+		display: block;
+		height: 6px;
+		margin: 0 -4px;
+		background: repeating-linear-gradient(135deg, #ffb000 0 10px, #0a0a0a 10px 20px);
+	}
+
+	/* Copy inside the box is pure white on the dark screen (WCAG AA); the amber border and
+	   tint carry the warning. On the ivory print page white would vanish, so it is ink. */
+	:global(html[data-crt='on']) .prose :global(.trap) {
+		color: #ffffff;
+	}
+
+	.prose :global(.trap .trap-head) {
+		margin: 0;
+		padding: 0.6rem 1.2rem;
+		border-bottom: 4px solid #ffb000;
+		font-family: var(--font-mono);
+		font-size: 1.2rem;
+		font-weight: 700;
+		line-height: 1.6;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: inherit;
+	}
+
+	.prose :global(.trap h3),
+	.prose :global(.trap li) {
+		color: inherit;
+	}
+
+	.prose :global(.trap h3) {
+		margin: 16px 1.2rem 8px;
+		padding-top: 0;
+		border-top: 0;
+	}
+
+	.prose :global(.trap ul) {
+		margin: 0 1.2rem 16px;
+		padding-left: 24px;
+	}
+
 	/* The back link lives in the fixed header, so the page starts below it. */
 	.reader {
 		padding: 80px clamp(24px, 5vw, 72px) 16px;

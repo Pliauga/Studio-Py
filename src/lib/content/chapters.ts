@@ -3,6 +3,7 @@ interface MdastNode {
 	depth?: number;
 	value?: string;
 	children?: MdastNode[];
+	data?: { hProperties?: Record<string, string> };
 }
 
 const textOf = (node: MdastNode): string =>
@@ -27,6 +28,25 @@ const telemetryKind = (title: string): 'hook' | 'debrief' | null => {
 	const key = title.trim().toLowerCase();
 	return key === 'the hook' ? 'hook' : key === 'the debrief' ? 'debrief' : null;
 };
+
+const isTrapHeading = (node: MdastNode): boolean =>
+	node.type === 'heading' && node.depth === 3 && /^watch out:/i.test(textOf(node).trim());
+
+/** A trap is its heading plus the list that follows; the amber warning box wraps exactly that. */
+function wrapTraps(nodes: MdastNode[]): MdastNode[] {
+	const out: MdastNode[] = [];
+	for (let i = 0; i < nodes.length; i++) {
+		const node = nodes[i];
+		if (!isTrapHeading(node)) {
+			out.push(node);
+			continue;
+		}
+		out.push(html('<div class="trap" role="note"><p class="trap-head">[ ! ] SYSTEM WARNING</p>'), node);
+		while (i + 1 < nodes.length && nodes[i + 1].type === 'list') out.push(nodes[++i]);
+		out.push(html('</div>'));
+	}
+	return out;
+}
 
 /** Every PyExercise in the lesson, including those nested in a scene layout block. */
 const countExercises = (nodes: MdastNode[]): number =>
@@ -55,6 +75,8 @@ export function lessonChapters() {
 		const close = (): void => {
 			if (!heading) return;
 			const kind = telemetryKind(textOf(heading));
+			// The CRT's light bleed is a blurred copy of the heading text, read from this attribute.
+			heading.data = { ...heading.data, hProperties: { 'data-text': textOf(heading) } };
 			const split = slot.length > 0 || kind !== null;
 			out.push(
 				html(
@@ -62,7 +84,7 @@ export function lessonChapters() {
 				),
 				heading,
 				html('</div></div><div class="chapter-body">'),
-				...narrative,
+				...wrapTraps(narrative),
 				html('</div>')
 			);
 			if (slot.length) {

@@ -41,6 +41,10 @@
 	const SWITCHYARD_TARGET_X = 0.4;
 	const PAPER = '#f1f1f1';
 	const INK = '#000000';
+	const PHOSPHOR = '#00FF41';
+	const SPARK_ANGLES = [-160, -125, -95, -60, -25, 15, 50, 95, 130, 165];
+	const CRT_GLASS = '#0a0a0a';
+	const JAM_RED = '#FF3333';
 	/** Oldest cubes are retired first, so a runaway `while True: spawn_cube()` cannot stall Rapier. */
 	const MAX_CUBES = 64;
 	/** The execution target holds the stage for this long before the block materialises. */
@@ -77,6 +81,19 @@
 
 	let bodyType = $state<'dynamic' | 'kinematicPosition'>('kinematicPosition');
 	let reduceMotion = $state(false);
+	let crt = $state(false);
+
+	// A traceback left by an earlier lesson is not this stage's failure: only a run that
+	// finished after this sandbox mounted can jam it.
+	const mountedAtRun = untrack(() => pythonRunner.runId);
+	const jammed = $derived(
+		pythonRunner.error !== null && !pythonRunner.isRunning && pythonRunner.runId > mountedAtRun
+	);
+	const jamReason = $derived(
+		(pythonRunner.error ?? '').trim().split('\n').at(-1)?.slice(0, 72) ?? ''
+	);
+	const printInk = $derived(jammed ? JAM_RED : crt ? PHOSPHOR : INK);
+	const printPaper = $derived(crt ? CRT_GLASS : PAPER);
 
 	onMount(() => {
 		const query = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -87,7 +104,19 @@
 		};
 
 		query.addEventListener('change', sync);
-		return () => query.removeEventListener('change', sync);
+
+		const root = document.documentElement;
+		const readCrt = () => {
+			crt = root.dataset.crt === 'on';
+		};
+		readCrt();
+		const crtObserver = new MutationObserver(readCrt);
+		crtObserver.observe(root, { attributes: true, attributeFilter: ['data-crt'] });
+
+		return () => {
+			query.removeEventListener('change', sync);
+			crtObserver.disconnect();
+		};
 	});
 	// `$state.raw` on purpose: Rapier objects are WASM handles, and `setTranslation`
 	// is patched per instance by `@threlte/rapier`.
@@ -388,7 +417,20 @@
 	data-target-position={newestTarget ? coordinates(newestTarget.position) : ''}
 	data-phantom-count={phantoms.length}
 	data-reduced-motion={reduceMotion}
+	data-jammed={jammed}
+	class:jammed
 >
+	{#if jammed}
+		<span class="sparks" aria-hidden="true">
+			{#each SPARK_ANGLES as angle (angle)}
+				<i style={`--angle: ${angle}deg`}></i>
+			{/each}
+		</span>
+		<p class="jam-light" role="alert">
+			<span class="lamp" aria-hidden="true"></span>
+			[ ! ] JAM · {jamReason}
+		</p>
+	{/if}
 	{#if reduceMotion}
 		<p class="motion-label" aria-live="polite">Reduced motion · static frame</p>
 	{/if}
@@ -404,7 +446,7 @@
 		toneMapping={NoToneMapping}
 	>
 		<SceneInvalidator active={reduceMotion} />
-		<BrutalistRender paper={PAPER} ink={INK} />
+		<BrutalistRender paper={PAPER} ink={INK} outPaper={printPaper} outInk={printInk} />
 		<T.PerspectiveCamera
 			makeDefault
 			position={mode === 'stack'
@@ -526,18 +568,18 @@
 
 			{#if mode === 'df'}
 				{#if DataScene}
-					<DataScene {reduceMotion} onchange={handleDfChange} />
+					<DataScene {reduceMotion} {jammed} onchange={handleDfChange} />
 				{/if}
 			{:else if mode === 'conveyor'}
 				{#if ConveyorScene}
-					<ConveyorScene {reduceMotion} onchange={handleConveyorChange} />
+					<ConveyorScene {reduceMotion} {jammed} onchange={handleConveyorChange} />
 				{/if}
 			{:else if SwitchyardScene}
-				<SwitchyardScene {reduceMotion} onchange={handleSwitchyardChange} />
+				<SwitchyardScene {reduceMotion} {jammed} onchange={handleSwitchyardChange} />
 			{/if}
 		{:else}
 			<World autoStart={!reduceMotion}>
-				<RapierMotion paused={reduceMotion} />
+				<RapierMotion paused={reduceMotion} {jammed} />
 				<!-- The floor exists only as a shadow catcher: it is otherwise
 				     transparent, so the cube sits in the page's paper void. -->
 				<T.Group position={[0, -0.25, 0]}>
@@ -557,7 +599,7 @@
 					{/if}
 				{:else if mode === 'sort'}
 					{#if SortScene}
-						<SortScene {reduceMotion} onchange={handleSortChange} />
+						<SortScene {reduceMotion} {jammed} onchange={handleSortChange} />
 					{/if}
 				{:else}
 					{#if cubes.length === 0 && targets.length === 0}
@@ -645,6 +687,112 @@
 
 	.motion-label {
 		left: 1.2rem;
+	}
+
+	/* The failure state: the whole stage shakes once and a red lamp stays lit until the
+	   next run clears the error. */
+	.sandbox.jammed {
+		animation: jam-shake 480ms steps(2, end) 1;
+	}
+
+	.jam-light {
+		position: absolute;
+		bottom: 1.2rem;
+		left: 1.2rem;
+		z-index: 2;
+		display: flex;
+		align-items: center;
+		gap: 0.8rem;
+		max-width: calc(100% - 2.4rem);
+		margin: 0;
+		padding: 0.5rem 0.8rem;
+		border: 2px solid #ff3333;
+		background: #0a0a0a;
+		color: #ff3333;
+		font-family: var(--font-mono);
+		font-size: 1rem;
+		font-weight: 700;
+		line-height: 1.2;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		pointer-events: none;
+	}
+
+	.lamp {
+		flex: none;
+		width: 0.9rem;
+		height: 0.9rem;
+		border-radius: 50%;
+		background: #ff3333;
+		animation: jam-blink 700ms steps(1, end) infinite;
+	}
+
+	/* Sparks thrown from the jammed mechanism: ten short crimson streaks, once per jam. */
+	.sparks {
+		position: absolute;
+		top: 55%;
+		left: 50%;
+		z-index: 2;
+		width: 0;
+		height: 0;
+		pointer-events: none;
+	}
+
+	.sparks i {
+		position: absolute;
+		width: 18px;
+		height: 3px;
+		background: #ff3333;
+		box-shadow: 0 0 6px #ff3333;
+		opacity: 0;
+		transform: rotate(var(--angle)) translateX(0);
+		animation: spark-fly 650ms ease-out 1 forwards;
+	}
+
+	@keyframes spark-fly {
+		0% {
+			opacity: 1;
+			transform: rotate(var(--angle)) translateX(0);
+		}
+		100% {
+			opacity: 0;
+			transform: rotate(var(--angle)) translateX(110px);
+		}
+	}
+
+	@keyframes jam-shake {
+		0% {
+			transform: translate(0, 0);
+		}
+		25% {
+			transform: translate(-7px, 3px);
+		}
+		50% {
+			transform: translate(6px, -4px);
+		}
+		75% {
+			transform: translate(-4px, -2px);
+		}
+		100% {
+			transform: translate(0, 0);
+		}
+	}
+
+	@keyframes jam-blink {
+		50% {
+			opacity: 0.15;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.sandbox.jammed,
+		.lamp {
+			animation: none;
+		}
+
+		.sparks {
+			display: none;
+		}
 	}
 
 	.readout {

@@ -13,10 +13,12 @@
 
 	type Props = {
 		reduceMotion?: boolean;
+		/** A Python error froze the machine: nothing advances until the next run. */
+		jammed?: boolean;
 		onchange?: (total: number, kept: number, dropped: number) => void;
 	};
 
-	let { reduceMotion = false, onchange }: Props = $props();
+	let { reduceMotion = false, jammed = false, onchange }: Props = $props();
 
 	const MAX_ROWS = 30;
 	const MAX_COLS = 6;
@@ -172,7 +174,7 @@
 	});
 
 	useTask((delta) => {
-		if (reduceMotion) return;
+		if (reduceMotion || jammed) return;
 
 		let moving = false;
 		let finished = false;
