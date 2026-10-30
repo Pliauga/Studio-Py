@@ -265,30 +265,30 @@
 	 * dark-mode palette.
 	 */
 	.predict .snippet :global(.tok-keyword) {
-		color: #8cb4e3 !important;
+		color: #f1f1f1 !important;
 		font-weight: 700;
 	}
 
 	.predict .snippet :global(.tok-boolean),
 	.predict .snippet :global(.tok-builtin) {
-		color: #7bd0c6 !important;
+		color: #40f51a !important;
 	}
 
 	.predict .snippet :global(.tok-function),
 	.predict .snippet :global(.tok-class-name) {
-		color: #7bd0a8 !important;
+		color: #f1f1f1 !important;
 	}
 
 	.predict .snippet :global(.tok-number) {
-		color: #b99ee6 !important;
+		color: #40f51a !important;
 	}
 
 	.predict .snippet :global(.tok-string) {
-		color: #e48c74 !important;
+		color: #a3a2a7 !important;
 	}
 
 	.predict .snippet :global(.tok-comment) {
-		color: #888888 !important;
+		color: #777777 !important;
 		font-style: italic;
 	}
 

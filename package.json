@@ -49,6 +49,7 @@
 		"@threlte/rapier": "3.5.1",
 		"@threlte/theatre": "3.2.2",
 		"codemirror": "^6.0.2",
+		"postprocessing": "^6.39.5",
 		"three": "^0.186.1"
 	}
 }

@@ -2,7 +2,7 @@
 	import { T, useTask, useThrelte } from '@threlte/core';
 	import SwitchyardLabel from './SwitchyardLabel.svelte';
 	import { onDestroy, untrack } from 'svelte';
-	import { BoxGeometry } from 'three';
+	import { BoxGeometry, LineBasicMaterial } from 'three';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
 	import type { AsyncCommand } from '#lib/pyexercise/sceneCommands.ts';
 
@@ -16,7 +16,7 @@
 	const DARK = '#111111';
 	const INK = '#101010';
 	const PAPER = '#f7f7f2';
-	const GRID = '#ffffff';
+	const GRID = INK;
 	const START_X = -5.2;
 	const END_X = 4.4;
 	const PAUSE_X = -0.4;
@@ -206,7 +206,17 @@
 	});
 </script>
 
-<T.GridHelper args={[28, 56, GRID, GRID]} position={[0, 0.006, 0]} />
+<T.GridHelper
+	args={[28, 56, GRID, GRID]}
+	position={[0, 0.006, 0]}
+	oncreate={(helper) => {
+		const material = helper.material;
+		if (!(material instanceof LineBasicMaterial)) return;
+		material.transparent = true;
+		material.opacity = 0.24;
+		material.depthWrite = false;
+	}}
+/>
 
 <SwitchyardLabel
 	text="ASYNC / SWITCHYARD"

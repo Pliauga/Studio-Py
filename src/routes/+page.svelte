@@ -5,6 +5,7 @@
 	import { progress } from '#lib/stores/progress.svelte.ts';
 	import { plate } from '#lib/stores/plate.svelte.ts';
 	import LandingTerminal from '#lib/components/LandingTerminal.svelte';
+	import type { Component } from 'svelte';
 	import {
 		CELL_PX,
 		SNAKE_CELLS,
@@ -26,6 +27,21 @@
 	let poster = $state<HTMLImageElement | null>(null);
 	let entering = false;
 
+	const HEADLINE = ['Stop Learning.', 'Start Patching.'] as const;
+	/** A phone is too narrow for 14-character lines: the forme stacks to one word per line. */
+	const HEADLINE_STACKED = ['Stop', 'Learning.', 'Start', 'Patching.'] as const;
+
+	/** The two WebGL canvases are their own chunks: the poster and the words paint first. */
+	let HalftonePlate = $state.raw<Component<{ reduceMotion: boolean }> | null>(null);
+	let HeroType = $state.raw<Component<{
+		lines: readonly string[];
+		reduceMotion: boolean;
+		onready: () => void;
+	}> | null>(null);
+	let typeSet = $state(false);
+	let stacked = $state(false);
+	let reduceMotion = $state(false);
+
 	const toCell = (px: number) => Math.round(px / CELL_PX);
 	const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -33,6 +49,16 @@
 	let completedCount = $state(0);
 
 	onMount(() => {
+		reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		stacked = window.matchMedia('(max-width: 599px)').matches;
+
+		void import('#lib/components/scene/HalftonePlate.svelte').then((module) => {
+			HalftonePlate = module.default;
+		});
+		void import('#lib/components/scene/HeroType.svelte').then((module) => {
+			HeroType = module.default;
+		});
+
 		completedCount = MODULES.filter(
 			(module) => progress.statusOf(module.slug) === 'completed'
 		).length;
@@ -44,10 +70,12 @@
 		if (entering) return;
 		entering = true;
 
+		const anchor = event.currentTarget instanceof HTMLAnchorElement ? event.currentTarget : null;
+		const destination = anchor ? new URL(anchor.href).pathname : '/dashboard';
 		const cover = overlay;
 		const layers = cover && wakeCanvas && spriteCanvas ? createLayers(wakeCanvas, spriteCanvas) : null;
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !cover || !poster || !layers) {
-			await goto('/dashboard');
+			await goto(destination);
 			return;
 		}
 
@@ -68,23 +96,26 @@
 		document.body.appendChild(cover);
 		root.dataset.warp = 'cover';
 		try {
-			await goto('/dashboard');
+			await goto(destination);
 			const idle = document.querySelector<HTMLElement>('.snake-idle');
-			const rect = idle?.getBoundingClientRect();
-			const target: Cell = rect
-				? {
-						x: Math.min(Math.max(toCell(rect.left), 0), layers.cols - SNAKE_CELLS),
-						y: Math.min(Math.max(toCell(rect.top), 0), layers.rows - SNAKE_CELLS)
-					}
-				: { x: 0, y: 0 };
+			if (!idle) {
+				// Only the index carries the idle snake to dock into; every other destination
+				// just ends the warp and lets the cover clear.
+				root.dataset.warp = 'idle';
+				window.setTimeout(() => delete root.dataset.warp, CARDS_MS);
+				return;
+			}
+			const rect = idle.getBoundingClientRect();
+			const target: Cell = {
+				x: Math.min(Math.max(toCell(rect.left), 0), layers.cols - SNAKE_CELLS),
+				y: Math.min(Math.max(toCell(rect.top), 0), layers.rows - SNAKE_CELLS)
+			};
 
 			root.dataset.warp = 'dock';
 			await dock(layers, run.path[run.path.length - 1], target);
 
 			// The idle snake takes over from the sprite on the exact grid cell it docked at.
-			if (idle && rect) {
-				idle.style.transform = `translate(${target.x * CELL_PX - rect.left}px, ${target.y * CELL_PX - rect.top}px)`;
-			}
+			idle.style.transform = `translate(${target.x * CELL_PX - rect.left}px, ${target.y * CELL_PX - rect.top}px)`;
 			root.dataset.warp = 'idle';
 			window.setTimeout(() => delete root.dataset.warp, CARDS_MS);
 		} catch (error) {
@@ -102,41 +133,55 @@
 		name="description"
 		content="Twenty-five modules over twenty-four weeks of small Python programs: variables, pandas, SQL, hashing, Streamlit and deployment."
 	/>
-	<link rel="preload" href="/studio-py-poster.webp" as="image" type="image/webp" fetchpriority="high" />
+	<link
+		rel="preload"
+		as="image"
+		type="image/webp"
+		href="/studio-py-poster-1200.webp"
+		imagesrcset="/studio-py-poster-1200.webp 1200w, /studio-py-poster-2400.webp 2400w"
+		imagesizes="(max-width: 900px) 100vw, 50vw"
+		fetchpriority="high"
+	/>
 </svelte:head>
 
 <main class="hero">
 	<figure class="plate">
-		<div
-			class="frame"
-			class:inked={plate.density !== null}
-			style:--plate-density={plate.density ?? 0}
-			data-plate-density={plate.density ?? undefined}
-		>
-			<img
-				bind:this={poster}
-				class="poster-img"
-				src="/studio-py-poster.webp"
-				alt="Poster for Studio Py — a Python curriculum run like an incident: 25 modules over 24 weeks."
-				width="1200"
-				height="1607"
-				fetchpriority="high"
-			/>
-			<span class="reg tl" aria-hidden="true"></span>
-			<span class="reg tr" aria-hidden="true"></span>
-			<span class="reg bl" aria-hidden="true"></span>
-			<span class="reg br" aria-hidden="true"></span>
+		<div class="frame" data-plate-density={plate.density ?? undefined}>
+			<div class="poster-cell">
+				<img
+					bind:this={poster}
+					class="poster-image"
+					src="/studio-py-poster-1200.webp"
+					srcset="/studio-py-poster-1200.webp 1200w, /studio-py-poster-2400.webp 2400w"
+					sizes="(max-width: 900px) 100vw, 50vw"
+					alt="Studio Py poster featuring a developer in a blue puffer holding a pixel snake"
+					width="1200"
+					height="1607"
+					fetchpriority="high"
+				/>
+			</div>
+			{#if HalftonePlate}
+				<div class="halftone" aria-hidden="true">
+					<HalftonePlate {reduceMotion} />
+				</div>
+			{/if}
 		</div>
 		<figcaption class="plate-caption" aria-hidden="true">
-			Studio-Py.pages.dev — 25 modules / 24 weeks{#if plate.density !== null}{' '}· ink {Math.round(plate.density * 100)}%{/if}
+			<span class="fig">FIG 0.1 — Operator{#if plate.density !== null}{' '}· ink {Math.round(plate.density * 100)}%{/if}</span>
+			<span class="colophon">EDITION 01/25 · OFFSET · RISO GREEN · 1200 DPI · WEBASSEMBLY</span>
 		</figcaption>
 	</figure>
 
 	<div class="readout">
-		<h1 class="headline">A Python curriculum,<br />run like an incident.</h1>
+		<div class="headline-set" class:stacked>
+			{#if HeroType}
+				<HeroType lines={stacked ? HEADLINE_STACKED : HEADLINE} {reduceMotion} onready={() => (typeSet = true)} />
+			{/if}
+			<h1 class="headline" class:set={typeSet}>Stop Learning.<br />Start Patching.</h1>
+		</div>
 		<p class="standfirst">
-			For developers who have shipped software and never written Python. Every module hands you a
-			broken system and one file to fix it with.
+			A psychological incident-response curriculum for Python. Every waypoint is a broken system.
+			Read the traceback. Find the trap. Fix the file. No playgrounds. No excuses.
 		</p>
 		<dl class="facts">
 			<div class="fact"><dt>Modules</dt><dd>25 over 24 weeks</dd></div>
@@ -176,20 +221,26 @@
 		--lamp: #1a1a1a;
 	}
 
+	/* The figure is exactly as wide as the print, so the captions align to its left edge. */
 	.plate {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+		display: grid;
+		justify-items: start;
+		width: fit-content;
+		max-width: 100%;
 		gap: 14px;
 		min-width: 0;
-		margin: 0;
+		margin: 0 auto;
 	}
 
 	/* Sized by CSS, never by the file: the plate cannot move when the poster lands. */
 	.frame {
+		--frame-h: min(76svh, calc(100svh - 280px));
 		position: relative;
 		isolation: isolate;
-		height: min(76svh, calc(100svh - 250px));
+		/* Width is computed from the height, not left to aspect-ratio: Safari resolves a
+		   fit-content parent over an aspect-ratio child to zero, which collapses the plate. */
+		width: calc(var(--frame-h) * 1200 / 1607);
+		height: var(--frame-h);
 		aspect-ratio: 1200 / 1607;
 		min-width: 0;
 		max-width: 100%;
@@ -209,112 +260,60 @@
 		pointer-events: none;
 	}
 
-	/* The halftone screen: one dot per cell, its radius the program's answer. It is
-	   printed matter that the machine half re-inks, so it multiplies into the poster
-	   like ink and stays off until a run has said something. */
-	@property --plate-density {
-		syntax: '<number>';
-		inherits: true;
-		initial-value: 0;
-	}
-
-	.frame::before {
-		content: '';
+	/* The halftone screen is a WebGL canvas: one dot per cell, its radius the program's
+	   answer. It is printed matter that the machine half re-inks, so it multiplies into
+	   the poster like ink and stays off until a run has said something. */
+	.halftone {
 		position: absolute;
 		inset: 1px;
-		background-image: radial-gradient(
-			circle at 50% 50%,
-			#000000 calc(var(--plate-density) * 2.7px),
-			transparent calc(var(--plate-density) * 2.7px + 0.6px)
-		);
-		background-size: 6px 6px;
 		mix-blend-mode: multiply;
-		opacity: 0;
 		pointer-events: none;
-		transition:
-			--plate-density var(--duration-4) var(--ease-standard),
-			opacity var(--duration-3) var(--ease-standard);
+		z-index: 1;
 	}
 
-	.frame.inked::before {
-		opacity: calc(0.3 + var(--plate-density) * 0.5);
-	}
-
-	/* Registration crosshairs centred on the four corners of the frame. */
-	.reg {
-		position: absolute;
-		width: 15px;
-		height: 15px;
-		pointer-events: none;
-	}
-
-	.reg::before,
-	.reg::after {
-		content: '';
-		position: absolute;
-		background: var(--color-ink);
-	}
-
-	.reg::before {
-		top: 7px;
-		left: 0;
-		width: 15px;
-		height: 1px;
-	}
-
-	.reg::after {
-		top: 0;
-		left: 7px;
-		width: 1px;
-		height: 15px;
-	}
-
-	.tl {
-		top: -8px;
-		left: -8px;
-	}
-
-	.tr {
-		top: -8px;
-		right: -8px;
-	}
-
-	.bl {
-		bottom: -8px;
-		left: -8px;
-	}
-
-	.br {
-		bottom: -8px;
-		right: -8px;
-	}
-
-	.poster-img {
+	/* The print fills the cell exactly, edge to edge. */
+	.poster-image {
 		display: block;
-		box-sizing: border-box;
 		width: 100%;
 		height: 100%;
-		object-fit: contain;
-		border: 1px solid var(--color-ink);
+		object-fit: cover;
 	}
 
 	/* Dark mode is a print seen at night, not an inverted one: the poster keeps its
 	   ink and loses luminance, so it stops glaring against the black page. */
-	:global(html[data-theme='dark']) .poster-img {
-		border-color: rgba(241, 241, 241, 0.24);
+	:global(html[data-theme='dark']) .poster-image {
 		filter: brightness(0.78) contrast(1.04);
 	}
 
-	/* The plate is still signed, the way a proof is signed: mono, small, set under the print. */
+	/* No border, outline, shadow or pseudo-element: the print is the only thing in
+	   this column that paints. */
+	.poster-cell {
+		position: relative;
+		width: 100%;
+		height: 100%;
+	}
+
+	/* The plate is signed the way a proof is signed: mono, small, set under the print. The
+	   zero-width trick keeps the text from widening the figure past the print. */
 	.plate-caption {
-		max-width: 100%;
+		display: grid;
+		gap: 4px;
+		width: 0;
+		min-width: 100%;
 		font-family: var(--font-mono);
-		font-size: 11px;
-		line-height: 1.2;
-		letter-spacing: 0.18em;
+		font-size: 0.65rem;
+		line-height: 1.4;
+		letter-spacing: 0.06em;
+		text-align: left;
+	}
+
+	.fig {
 		text-transform: uppercase;
-		text-align: center;
-		color: var(--color-tertiary);
+		color: var(--color-ink);
+	}
+
+	.colophon {
+		color: var(--color-muted);
 	}
 
 	.terminal-caption {
@@ -336,10 +335,30 @@
 		min-width: 0;
 	}
 
+	/* The type forme is steel on a press bed; the h1 is the same words for readers,
+	   search and the moment before the type has loaded. */
+	.headline-set {
+		position: relative;
+		width: 100%;
+		aspect-ratio: 18 / 5;
+	}
+
+	.headline-set.stacked {
+		aspect-ratio: 8 / 5;
+	}
+
+	.headline.set {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		white-space: nowrap;
+	}
+
 	.headline {
 		margin: 0;
 		font-family: var(--font-body);
-		font-size: clamp(2.1rem, 3.4vw, 3.5rem);
+		font-size: clamp(2.45rem, 4vw, 4.1rem);
 		font-weight: 400;
 		line-height: 0.98;
 		letter-spacing: -0.025em;
@@ -348,10 +367,10 @@
 
 	.standfirst {
 		margin: 0;
-		max-width: 38ch;
+		max-width: 45ch;
 		font-family: var(--font-display);
 		font-size: clamp(0.95rem, 1.1vw, 1.05rem);
-		line-height: 1.55;
+		line-height: 1.5;
 		letter-spacing: -0.005em;
 		color: var(--color-ink);
 	}
@@ -414,7 +433,7 @@
 		}
 
 		.headline {
-			font-size: clamp(1.9rem, 3.6vw, 2.8rem);
+			font-size: clamp(2.2rem, 4.2vw, 3.3rem);
 		}
 	}
 
@@ -423,30 +442,30 @@
 		.hero {
 			grid-template-columns: minmax(0, 1fr);
 			align-content: center;
-			gap: 18px;
-			padding: 78px 20px 30px;
+			gap: clamp(26px, 6vw, 34px);
+			padding: 78px 20px 40px;
 		}
 
 		.frame {
-			height: min(37svh, 320px);
+			--frame-h: min(37svh, 320px);
 			margin-inline: auto;
 		}
 
-		.plate-caption {
-			font-size: 10px;
-			letter-spacing: 0.14em;
+		.plate {
+			gap: 20px;
 		}
 
 		.readout {
 			max-width: 100%;
+			gap: clamp(22px, 4vw, 26px);
 		}
 
 		.headline {
-			font-size: clamp(1.85rem, 7vw, 2.5rem);
+			font-size: clamp(2.05rem, 7.6vw, 2.9rem);
 		}
 
 		.standfirst {
-			max-width: 52ch;
+			max-width: 45ch;
 		}
 	}
 
@@ -454,10 +473,6 @@
 		/* The terminal's own transitions are scoped to the component. */
 		* {
 			scroll-behavior: auto;
-		}
-
-		.frame::before {
-			transition: none;
 		}
 	}
 </style>

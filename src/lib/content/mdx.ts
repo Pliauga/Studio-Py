@@ -13,7 +13,8 @@ import { lessonChapters } from './chapters.ts';
  */
 const COMPONENT_IMPORTS = [
 	"import PyExercise from '#lib/components/PyExercise.svelte';",
-	"import PredictOutput from '#lib/components/lesson/PredictOutput.svelte';"
+	"import PredictOutput from '#lib/components/lesson/PredictOutput.svelte';",
+	"import LessonTelemetry from '#lib/components/lesson/LessonTelemetry.svelte';"
 ];
 
 const SANDBOX_IMPORT = "import SandboxEmbed from '#lib/components/lesson/SandboxEmbed.svelte';";

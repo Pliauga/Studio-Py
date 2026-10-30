@@ -279,4 +279,3 @@
 	</T.Group>
 {/each}
 
-<T.AmbientLight intensity={0.12} />

@@ -3,6 +3,8 @@
 // `node --experimental-strip-types scripts/check-live.mjs`.
 import { densityFromRun, faultLine } from '../src/lib/pyexercise/terminal.ts';
 import { headOffset } from '../src/lib/motion/trail.ts';
+import { JAM_MS, misregistration } from '../src/lib/motion/misregistration.ts';
+import { CELL_W, layoutForme } from '../src/lib/motion/letterpress.ts';
 
 const DISK = (used, total = 100) => `disk = {"used_gb": ${used}, "total_gb": ${total}}`;
 
@@ -56,6 +58,30 @@ CASES.push(
 	['all passed, last section unread: head waits at it', headOffset(withPassed(0, 1, 2), 1000, 700), 800],
 	['all passed and read to the end: head at the end', headOffset(withPassed(0, 1, 2), 1000, 1000), 1000],
 	['no sections: head stays at the top', headOffset([], 1000, 500), 0]
+);
+
+const SWEEP = Array.from({ length: JAM_MS + 1 }, (_, ms) => misregistration(ms));
+const FORME = layoutForme(['Stop Learning.', 'Start Patching.']);
+const FIRST = FORME.letters[0];
+const LAST = FORME.letters.at(-1);
+
+CASES.push(
+	['press at rest before the run', misregistration(0), 0],
+	['a run that has not happened shifts nothing', misregistration(-40), 0],
+	['jam holds three pixels off register', misregistration(100), 3],
+	['the snap passes through the middle', approx(misregistration(175), 1), true],
+	['the screen is home after the jam', misregistration(JAM_MS), 0],
+	['stays home long after', misregistration(5000), 0],
+	['never leaves the press window', SWEEP.every((px) => px <= 3 && px >= -1), true],
+	['non-finite time is treated as at rest', misregistration(Number.NaN), 0],
+
+	['spaces are not blocks: 13 + 14 glyphs', FORME.letters.length, 27],
+	['first block is the S of Stop', FIRST.char, 'S'],
+	['first line is centred on the bed', approx(FIRST.x, -6.5 * CELL_W), true],
+	['second line is centred on the bed', approx(LAST.x, 7 * CELL_W), true],
+	['line one sits behind line two', FIRST.z < LAST.z, true],
+	['widest line sets the forme width', approx(FORME.width, 15 * CELL_W), true],
+	['block ids are unique', new Set(FORME.letters.map((l) => l.id)).size, 27]
 );
 
 let failures = 0;

@@ -9,7 +9,7 @@ export type LessonModule = {
 	/** Lesson number, 0..24. */
 	week: number;
 	title: string;
-	/** One sentence, shown on the module card. */
+	/** One-sentence scene-setting, shown as the lesson lede and meta description. */
 	summary: string;
 	estimatedMinutes: number;
 	/** The filter a reader looks for: systems work, data work, or network work. */

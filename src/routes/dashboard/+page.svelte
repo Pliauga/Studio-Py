@@ -1,6 +1,5 @@
 <script lang="ts">
 	import InkStamp from '#lib/components/InkStamp.svelte';
-	import RegistrationMarks from '#lib/components/RegistrationMarks.svelte';
 	import SnakeSpine from '#lib/components/SnakeSpine.svelte';
 	import { MODULES } from '#lib/content/lessons.ts';
 	import { markStyle } from '#lib/content/marks.ts';
@@ -70,17 +69,26 @@
 	};
 
 	const visible = $derived(REST.filter(matches));
-	// One module earns the expanded row: the next one in line, and only in the
-	// unfiltered view, where "next" still means next.
-	const nextSlug = $derived(
-		REST.find((module) => progress.statusOf(module.slug) !== 'completed')?.slug ?? null
-	);
-	const expandedSlug = $derived(filter === 'all' ? nextSlug : null);
-	// The expanded card spans two columns, so the drawing ends with three empty cells.
-	// They are filled by a printed end plate, never by exposed grid ink.
-	const endSpan = $derived(
-		filter === 'all' && (visible.length + (expandedSlug ? 1 : 0)) % 4 === 1 ? 3 : 0
-	);
+	// The ledger is twelve columns wide and every row sums to twelve, so no cell is ever
+	// left empty and no grid ink shows through. W01 and W02 split the first row in half,
+	// W03 to W05 are the three-across rhythm, W06 is the full-width break, and after that
+	// two rows of thirds are followed by another full-width break. A short last row stretches
+	// its final card to close the line, so a filtered view reads the same rhythm from the top.
+	const GROUPS = [[6, 6], [4, 4, 4], [12]];
+	const LOOP = [[4, 4, 4], [4, 4, 4], [12]];
+	const layout = $derived.by(() => {
+		const out: number[] = [];
+		for (let group = 0; out.length < visible.length; group += 1) {
+			const full = group < GROUPS.length ? GROUPS[group] : LOOP[(group - GROUPS.length) % LOOP.length];
+			const cells = full.slice(0, visible.length - out.length);
+			if (cells.length < full.length) {
+				const others = cells.slice(0, -1).reduce((sum, span) => sum + span, 0);
+				cells[cells.length - 1] = 12 - others;
+			}
+			out.push(...cells);
+		}
+		return out;
+	});
 
 	let radios: HTMLButtonElement[] = [];
 
@@ -123,8 +131,13 @@
 </svelte:head>
 
 <main class="console">
-	<div class="sheet">
-		<RegistrationMarks />
+	<div class="sheet registration-frame">
+		<div class="crosshair-overlay" aria-hidden="true">
+			<span class="corner tl"></span>
+			<span class="corner tr"></span>
+			<span class="corner bl"></span>
+			<span class="corner br"></span>
+		</div>
 
 		<header class="masthead">
 		<div class="meta-row">
@@ -188,8 +201,6 @@
 					<span class="tplus">T+ {clock(START.tplus)}</span>
 				</div>
 
-				<span class="band-summary" id="band-summary">{START.summary}</span>
-
 				<span class="handoff" id="band-handoff">
 					<span>&gt; SYSTEM ALERT: srv-07 disk at 96%.</span>
 					<span>&gt; handoff to operator...</span>
@@ -206,16 +217,14 @@
 
 		<div class="grid-wrap">
 			<ol class="ledger">
-				{#each visible as module (module.slug)}
+				{#each visible as module, index (module.slug)}
 					{@const status = progress.statusOf(module.slug)}
 					{@const titleId = `module-${module.slug}`}
-					{@const summaryId = `summary-${module.slug}`}
 					{@const statusId = `status-${module.slug}`}
-					{@const expanded = module.slug === expandedSlug}
-					<li class:expanded>
+					{@const span = layout[index]}
+					<li class:hero={span === 12} class:half={span === 6} style:--span={span}>
 						<article class="card">
-							<!-- One accessible name: the visible h2. The boot text stays out of
-							     it, and the synopsis is only described where it is shown. -->
+							<!-- One accessible name: the visible h2; the rest is visual metadata. -->
 							<a
 								class="entry"
 								class:done={status === 'completed'}
@@ -237,18 +246,6 @@
 
 									<h2 class="name" id={titleId}>{module.title}</h2>
 
-									{#if module.week === 1}
-										<span class="terminal" aria-hidden="true">
-											<span class="line">$ python3 -m core</span>
-											<span class="line">[OK] Booting variables...</span>
-											<span class="line">&gt; READY<span class="cursor"></span></span>
-										</span>
-									{/if}
-
-									{#if expanded}
-										<span class="synopsis" id={summaryId}>{module.summary}</span>
-									{/if}
-
 									<span class="face-foot">
 										<span class="label">{module.estimatedMinutes} min</span>
 										<span class="state" id={statusId}>{STATUS_LABEL[status]}</span>
@@ -261,18 +258,6 @@
 						</article>
 					</li>
 				{/each}
-
-				{#if endSpan}
-					<li class="endplate" style:grid-column={`span ${endSpan}`} aria-hidden="true">
-						<span class="endplate-kicker">End matter · Plate 01</span>
-						<span class="endplate-figure">25</span>
-						<span class="endplate-note">Twenty-five modules. One operator. No server.</span>
-						<span class="endplate-foot">
-							<span>Pyodide press</span>
-							<span>Client-side edition</span>
-						</span>
-					</li>
-				{/if}
 
 				{#if visible.length === 0}
 					<li class="void">
@@ -389,6 +374,70 @@
 
 	.sheet {
 		position: relative;
+	}
+
+	/* The sheet registers itself: four hairlines at the corners of a 2rem safe zone,
+	   painted over the grid in their own layer, so no corner is hardcoded into the text
+	   flow and no label row has to carry a gutter for one. */
+	.registration-frame {
+		padding: 2rem;
+	}
+
+	.crosshair-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 50;
+		overflow: hidden;
+		pointer-events: none;
+	}
+
+	.corner {
+		position: absolute;
+		width: 12px;
+		height: 12px;
+	}
+
+	.corner::before,
+	.corner::after {
+		content: '';
+		position: absolute;
+		background-color: var(--color-ink);
+	}
+
+	.corner::before {
+		top: 0;
+		left: 50%;
+		width: 1px;
+		height: 100%;
+		transform: translateX(-50%);
+	}
+
+	.corner::after {
+		top: 50%;
+		left: 0;
+		width: 100%;
+		height: 1px;
+		transform: translateY(-50%);
+	}
+
+	.corner.tl {
+		top: 0;
+		left: 0;
+	}
+
+	.corner.tr {
+		top: 0;
+		right: 0;
+	}
+
+	.corner.bl {
+		bottom: 0;
+		left: 0;
+	}
+
+	.corner.br {
+		bottom: 0;
+		right: 0;
 	}
 
 	.meta-row {
@@ -586,14 +635,6 @@
 		color: var(--color-muted);
 	}
 
-	.band-summary {
-		max-width: 68ch;
-		font-family: var(--font-body);
-		font-size: clamp(1rem, 1.4vw, 1.25rem);
-		line-height: 1.4;
-		text-wrap: pretty;
-	}
-
 	/* The handoff is the only prose the machine says before the first click: one
 	   mono line, prompts included, no typing loop. */
 	.handoff {
@@ -657,9 +698,13 @@
 
 	.ledger {
 		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-columns: repeat(12, minmax(0, 1fr));
 		grid-auto-rows: minmax(148px, auto);
 		grid-auto-flow: dense;
+		/* Stretch, not start: every cell in a row is already the row's height, so the
+		   cards' feet share one baseline and no 1px rule shows through under a short
+		   card. `start` would leave exactly those voids. */
+		align-items: stretch;
 		gap: 1px;
 		margin: 0;
 		padding: 0;
@@ -671,67 +716,15 @@
 	}
 
 	.ledger li {
+		grid-column: span var(--span, 4);
+		align-self: stretch;
 		min-width: 0;
 		background: var(--color-paper);
 	}
 
-	/* The next module in line gets twice the width, and with it the sentence. */
-	.ledger li.expanded {
-		grid-column: span 2;
-	}
-
-	/* The three cells the expanded plate leaves empty become the book's end matter,
-	   so the drawing closes on a printed block instead of exposed ink. */
-	.endplate {
-		position: relative;
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		grid-template-rows: auto 1fr auto;
-		gap: 4px clamp(16px, 2vw, 28px);
-		padding: clamp(14px, 1.6rem, 20px);
-		overflow: hidden;
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		line-height: 1.2;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-
-	.endplate-kicker {
-		color: var(--label);
-	}
-
-	.endplate-figure {
-		grid-column: 2;
-		grid-row: 1 / -1;
-		align-self: center;
-		font-family: var(--font-display);
-		font-size: clamp(4rem, 7vw, 6rem);
-		font-weight: 600;
-		line-height: 0.78;
-		letter-spacing: -0.07em;
-	}
-
-	.endplate-note {
-		align-self: end;
-		max-width: 38ch;
-		font-family: var(--font-body);
-		font-size: clamp(0.95rem, 1.2vw, 1.1rem);
-		line-height: 1.35;
-		letter-spacing: 0;
-		text-transform: none;
-		text-wrap: pretty;
-	}
-
-	.endplate-foot {
-		display: flex;
-		grid-column: 1 / -1;
-		justify-content: space-between;
-		gap: 12px;
-		padding-top: 8px;
-		border-top: 1px solid var(--color-line-faint);
-		font-size: 0.625rem;
-		color: var(--label);
+	/* The next module in line carries the sentence, whatever width it landed on. */
+	.ledger li.hero .entry {
+		min-height: 188px;
 	}
 
 	.card {
@@ -774,6 +767,35 @@
 		height: 100%;
 	}
 
+	/* One impression, mis-fed: the plate jumps a couple of pixels off its register and
+	   settles. Steps, not easing, so it reads as a machine twitch. */
+	@keyframes misregister {
+		0% {
+			transform: rotate(4deg) translate(0, 0);
+		}
+		40% {
+			transform: rotate(5.6deg) translate(3px, -2px);
+		}
+		75% {
+			transform: rotate(3.1deg) translate(-2px, 1px);
+		}
+		100% {
+			transform: rotate(4deg) translate(0, 0);
+		}
+	}
+
+	@keyframes misregister-band {
+		0% {
+			transform: translateY(-50%) rotate(7deg);
+		}
+		40% {
+			transform: translateY(-46%) rotate(9deg);
+		}
+		100% {
+			transform: translateY(-50%) rotate(7deg);
+		}
+	}
+
 	.stamp-slot {
 		position: absolute;
 		z-index: 2;
@@ -791,6 +813,12 @@
 		overflow: hidden;
 		color: inherit;
 		text-decoration: none;
+		/* Two frames, not a fade: the plate steps to its hovered state the way a machine
+		   indexes, and steps back the same way. */
+		transition:
+			transform 0.1s steps(2, end),
+			background-color 0.1s steps(2, end),
+			color 0.1s steps(2, end);
 	}
 
 	/* Invert the sheet instantly; never lift it. The grid stays flat, the type flips to
@@ -801,6 +829,8 @@
 			color: var(--color-paper);
 			outline: 1px solid var(--color-paper);
 			outline-offset: -1px;
+			/* The column shoulders over by one notch: a mechanical shift, not a lift. */
+			transform: translateX(4px);
 		}
 
 		.entry:hover .state,
@@ -812,18 +842,29 @@
 		.entry:hover .plate-mark {
 			opacity: 0.2;
 			filter: invert(1);
+			/* The plate slips its register for a beat, the way a mis-fed impression does. */
+			animation: misregister 0.28s steps(3, end) 1;
+		}
+
+		.band:hover .band-mark,
+		.band:focus-within .band-mark {
+			animation: misregister-band 0.28s steps(3, end) 1;
 		}
 	}
 
+	/* The face is a column whose status line is pinned to the card's foot, so every
+	   card in a row shares one baseline however much sits above it. */
 	.face {
 		position: relative;
 		z-index: 1;
 		display: flex;
 		flex: 1;
 		flex-direction: column;
+		justify-content: space-between;
 		gap: clamp(8px, 1.2rem, 12px);
 		min-width: 0;
 		padding: clamp(12px, 1.6rem, 20px);
+		padding-bottom: 24px;
 	}
 
 	.face-top,
@@ -875,6 +916,12 @@
 				center / 1px 11px no-repeat;
 	}
 
+	/* The active sprint: a solid snake-green spine on the card's left edge, so the eye
+	   can track in-progress modules down the grid without reading a word. */
+	.entry.active {
+		box-shadow: inset 4px 0 0 var(--color-snake);
+	}
+
 	.entry.active .state::before {
 		opacity: 1;
 		background:
@@ -908,8 +955,13 @@
 		text-wrap: balance;
 	}
 
-	.expanded .name {
-		font-size: clamp(1.6rem, 3.2vw, 2.6rem);
+	/* Type scales with the span: dense at a third, larger at a half, a headline at full width. */
+	.half .name {
+		font-size: clamp(1.5rem, 2.7vw, 2.25rem);
+	}
+
+	.hero .name {
+		font-size: clamp(1.8rem, 3.6vw, 3rem);
 	}
 
 	/* Metadata is a caption, not a second title: small, loose, and pinned to the foot. */
@@ -917,42 +969,6 @@
 		margin-top: auto;
 		font-size: 0.75rem;
 		letter-spacing: 0.08em;
-	}
-
-	.synopsis {
-		max-width: 74ch;
-		font-family: var(--font-body);
-		font-size: clamp(1rem, 1.3vw, 1.2rem);
-		line-height: 1.4;
-		text-wrap: pretty;
-	}
-
-	.terminal {
-		display: flex;
-		flex-direction: column;
-		justify-content: flex-end;
-		box-sizing: border-box;
-		/* The console is docked in the card, not framed inside it: it runs to the
-		   card's own rules on both sides and is separated only by its top and bottom. */
-		margin-inline: calc(-1 * clamp(12px, 1.6rem, 20px));
-		width: auto;
-		max-width: none;
-		padding: 10px clamp(12px, 1.6rem, 20px);
-		border: 0;
-		border-block: 1px solid currentColor;
-		background: #000000;
-		color: #f1f1f1;
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		line-height: 1.6;
-		letter-spacing: 0.04em;
-		text-transform: none;
-	}
-
-	/* On black paper the console would vanish into the plate: lift it by one step so it
-	   still reads as an instrument rather than as more text. */
-	:global(html[data-theme='dark']) .terminal {
-		background: color-mix(in srgb, var(--color-ink) 6%, #000000);
 	}
 
 	/* Inverted ink on black paper is a lamp, not a print. Carry the plate at a
@@ -971,31 +987,6 @@
 		:global(html[data-theme='dark']) .entry:hover .plate-mark {
 			filter: none;
 			opacity: 0.18;
-		}
-	}
-
-	.terminal .line {
-		display: block;
-	}
-
-	.cursor {
-		display: inline-block;
-		width: 0.6em;
-		height: 1em;
-		margin-left: 0.4em;
-		vertical-align: text-bottom;
-		background: #f1f1f1;
-		animation: cursor-blink 1s steps(1) infinite;
-	}
-
-	@keyframes cursor-blink {
-		0%,
-		49% {
-			opacity: 1;
-		}
-		50%,
-		100% {
-			opacity: 0;
 		}
 	}
 
@@ -1055,19 +1046,13 @@
 		}
 	}
 
-	@media (max-width: 1100px) {
-		.ledger {
-			grid-template-columns: repeat(3, minmax(0, 1fr));
-		}
-
-		.endplate {
-			display: none;
-		}
-	}
-
 	@media (max-width: 900px) {
-		.ledger {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+		.ledger li {
+			grid-column: span 12;
+		}
+
+		.ledger li.hero .entry {
+			min-height: 148px;
 		}
 
 		.band-link {
@@ -1075,7 +1060,6 @@
 			grid-template-areas:
 				'top'
 				'title'
-				'summary'
 				'foot';
 		}
 
@@ -1091,15 +1075,6 @@
 
 		h1 {
 			font-size: clamp(72px, 24vw, 96px);
-		}
-
-		.ledger {
-			grid-template-columns: minmax(0, 1fr);
-		}
-
-		/* One column: the double width would force an implicit second track. */
-		.ledger li.expanded {
-			grid-column: auto;
 		}
 
 		/* Narrowest widths: week, badge and stamp share one line; the title takes the next. */
@@ -1122,17 +1097,12 @@
 			padding: 12px;
 		}
 
-		/* The console bleeds by the face's padding, so the bleed shrinks with it. */
-		.terminal {
-			margin-inline: -12px;
-			padding-inline: 12px;
-		}
-
 		.name {
 			font-size: 1.15rem;
 		}
 
-		.expanded .name {
+		.half .name,
+		.hero .name {
 			font-size: 1.5rem;
 		}
 
@@ -1146,7 +1116,14 @@
 			animation: none;
 		}
 
-		.cursor {
+		.entry,
+		.entry:hover {
+			transition: none;
+			transform: none;
+		}
+
+		.entry:hover .plate-mark,
+		.band:hover .band-mark {
 			animation: none;
 		}
 	}

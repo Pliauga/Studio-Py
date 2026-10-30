@@ -3,12 +3,17 @@
 	import { OrbitControls } from '@threlte/extras';
 	import { World, RigidBody, AutoColliders } from '@threlte/rapier';
 	import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
-	import { onMount, untrack } from 'svelte';
-	import { BasicShadowMap, NoToneMapping } from 'three';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { BasicShadowMap, LineBasicMaterial, NoToneMapping } from 'three';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
 	import RapierMotion from './RapierMotion.svelte';
 	import SceneInvalidator from './SceneInvalidator.svelte';
-	import type { Vec3 } from '#lib/pyexercise/sceneCommands.ts';
+	import BrutalistRender from './BrutalistRender.svelte';
+	import InkedObject from './InkedObject.svelte';
+	import LivePosition from './LivePosition.svelte';
+	import PhantomCube from './PhantomCube.svelte';
+	import TargetBox from './TargetBox.svelte';
+	import type { SpawnShape, Vec3 } from '#lib/pyexercise/sceneCommands.ts';
 	import type StackSceneComponent from './StackScene.svelte';
 	import type SortSceneComponent from './SortScene.svelte';
 	import type DataSceneComponent from './DataScene.svelte';
@@ -38,13 +43,36 @@
 	const INK = '#000000';
 	/** Oldest cubes are retired first, so a runaway `while True: spawn_cube()` cannot stall Rapier. */
 	const MAX_CUBES = 64;
+	/** The execution target holds the stage for this long before the block materialises. */
+	const SPAWN_LEAD_MS = 100;
 
 	type PythonCube = {
 		id: number;
 		position: Vec3;
+		shape: SpawnShape;
 		color: string;
-		size: number;
+		size: Vec3;
 		type: 'dynamic' | 'kinematicPosition';
+	};
+
+	type SpawnTarget = { id: number; position: Vec3; size: Vec3 };
+	type Phantom = { id: number; position: Vec3; size: number };
+	type PendingSpawn = {
+		position: Vec3;
+		shape: SpawnShape;
+		color: string;
+		size: Vec3;
+		drop: boolean;
+		timer: ReturnType<typeof setTimeout> | null;
+	};
+
+	/** Rapier colliders closest to each authored shape. */
+	const COLLIDER_SHAPE: Record<SpawnShape, 'cuboid' | 'ball' | 'convexHull'> = {
+		box: 'cuboid',
+		node: 'cuboid',
+		sphere: 'ball',
+		cylinder: 'convexHull',
+		snake: 'convexHull'
 	};
 
 	let bodyType = $state<'dynamic' | 'kinematicPosition'>('kinematicPosition');
@@ -81,6 +109,44 @@
 	let asyncFinished = $state(0);
 	let asyncSnapshot = $state('');
 	let appliedSeq = 0;
+
+	/** Spawns waiting out their execution target, keyed by the command that asked for them. */
+	const pendingSpawns = new Map<number, PendingSpawn>();
+	let targets = $state<SpawnTarget[]>([]);
+	let phantoms = $state<Phantom[]>([]);
+
+	const newestTarget = $derived(targets.at(-1));
+	const newestCube = $derived(cubes.at(-1));
+	let livePosition = $state<Vec3 | null>(null);
+	const readout = $derived(
+		newestTarget?.position ??
+			livePosition ??
+			newestCube?.position ?? ([0, HOVER_HEIGHT, 0] as Vec3)
+	);
+
+	function handleLive(position: Vec3) {
+		livePosition = position;
+	}
+
+	function coordinates(position: Vec3): string {
+		return position.map((value) => value.toFixed(2)).join(', ');
+	}
+
+	function removePhantom(id: number) {
+		phantoms = phantoms.filter((phantom) => phantom.id !== id);
+	}
+
+	function cancelPending() {
+		for (const pending of pendingSpawns.values()) {
+			if (pending.timer) clearTimeout(pending.timer);
+		}
+		pendingSpawns.clear();
+		targets = [];
+		phantoms = [];
+		livePosition = null;
+	}
+
+	onDestroy(cancelPending);
 
 	// Troika is sizeable, so the cube lesson never downloads it. Each mode
 	// imports only the scene it needs.
@@ -183,18 +249,58 @@
 
 				if (command.type === 'spawn') {
 					bodyType = 'kinematicPosition';
-					cubes.push({
-						id: command.seq,
+
+					const pending: PendingSpawn = {
 						position: command.position,
+						shape: command.shape,
 						color: command.color,
 						size: command.size,
-						type: 'kinematicPosition'
-					});
-					if (cubes.length > MAX_CUBES) cubes.shift();
+						drop: false,
+						timer: null
+					};
+					pending.timer = setTimeout(() => {
+						pendingSpawns.delete(command.seq);
+						targets = targets.filter((target) => target.id !== command.seq);
+						cubes.push({
+							id: command.seq,
+							position: pending.position,
+							shape: pending.shape,
+							color: pending.color,
+							size: pending.size,
+							type: pending.drop ? 'dynamic' : 'kinematicPosition'
+						});
+						if (cubes.length > MAX_CUBES) cubes.shift();
+					}, SPAWN_LEAD_MS);
+
+					pendingSpawns.set(command.seq, pending);
+					targets.push({ id: command.seq, position: command.position, size: command.size });
+					// Drop the previous body's sample so the readout cannot report it
+					// for the block that is still waiting on its target.
+					livePosition = null;
 				} else if (command.type === 'drop') {
-					const last = cubes.at(-1);
-					if (last) last.type = 'dynamic';
+					// A spawn still holding its execution target drops the moment it lands.
+					const pending = [...pendingSpawns.values()].at(-1);
+					if (pending) {
+						pending.drop = true;
+					} else {
+						const last = cubes.at(-1);
+						if (last) last.type = 'dynamic';
+						else bodyType = 'dynamic';
+					}
+				} else if (command.type === 'phantom') {
+					// A below-the-plate spawn would sit outside the camera frustum;
+					// surface the trace at the requested x/z so the failure reads.
+					phantoms.push({
+						id: command.seq,
+						position: [
+							command.position[0],
+							command.size / 2 + 0.35,
+							command.position[2]
+						],
+						size: command.size
+					});
 				} else if (command.type === 'clear') {
+					cancelPending();
 					cubes = [];
 				}
 			}
@@ -207,6 +313,12 @@
 	 */
 	export function drop() {
 		if (mode !== 'cube') return;
+
+		const pending = [...pendingSpawns.values()].at(-1);
+		if (pending) {
+			pending.drop = true;
+			return;
+		}
 
 		const last = cubes.at(-1);
 		if (last) last.type = 'dynamic';
@@ -221,6 +333,7 @@
 	export function reset() {
 		const hadCubes = cubes.length > 0;
 		pythonRunner.clearScene();
+		cancelPending();
 		cubes = [];
 		bodyType = 'kinematicPosition';
 		stackCount = 0;
@@ -269,11 +382,20 @@
 	data-df-dropped={dfDropped}
 	data-demo-body-type={bodyType}
 	data-last-cube-type={cubes.at(-1)?.type ?? 'none'}
+	data-last-shape={cubes.at(-1)?.shape ?? 'none'}
 	data-last-command={pythonRunner.sceneCommands.at(-1)?.type ?? 'none'}
+	data-target-count={targets.length}
+	data-target-position={newestTarget ? coordinates(newestTarget.position) : ''}
+	data-phantom-count={phantoms.length}
 	data-reduced-motion={reduceMotion}
 >
 	{#if reduceMotion}
 		<p class="motion-label" aria-live="polite">Reduced motion · static frame</p>
+	{/if}
+	{#if mode === 'cube'}
+		<p class="readout" aria-hidden="true">
+			X: {readout[0].toFixed(2)} · Y: {readout[1].toFixed(2)} · Z: {readout[2].toFixed(2)}
+		</p>
 	{/if}
 	<Canvas
 		renderMode={reduceMotion ? 'on-demand' : 'always'}
@@ -282,6 +404,7 @@
 		toneMapping={NoToneMapping}
 	>
 		<SceneInvalidator active={reduceMotion} />
+		<BrutalistRender paper={PAPER} ink={INK} />
 		<T.PerspectiveCamera
 			makeDefault
 			position={mode === 'stack'
@@ -347,17 +470,35 @@
 
 		<T.Color attach="background" args={[PAPER]} />
 
-		<!-- One hard key light. The tight shadow frustum keeps the 2048px map
-		     crisp at the scale of the cube. -->
+		<!-- The floor plan: one hairline per unit so the paper void reads as a
+		     drafting sheet instead of an empty studio. The switchyard scene
+		     already lays out its own grid. -->
+		{#if mode !== 'switchyard'}
+			<T.GridHelper
+				args={[40, 40, INK, INK]}
+				position={[0, 0.004, 0]}
+				oncreate={(helper) => {
+					const material = helper.material;
+					if (!(material instanceof LineBasicMaterial)) return;
+					material.color.set(INK);
+					material.transparent = true;
+					material.opacity = 0.24;
+					material.depthWrite = false;
+				}}
+			/>
+		{/if}
+
+		<!-- One hard key light at 45 degrees of elevation. The shadow map is kept
+		     small on purpose: jagged texels are the look. -->
 		<T.DirectionalLight
-			position={[6, 12, 8]}
+			position={[8, 11.3, 8]}
 			intensity={2.2}
 			castShadow
 			oncreate={(light) => {
 				const extent =
 				mode === 'sort' || mode === 'switchyard' ? 18 : mode === 'df' ? 16 : mode === 'conveyor' ? 20 : 12;
-				light.shadow.mapSize.width = 2048;
-				light.shadow.mapSize.height = 2048;
+				light.shadow.mapSize.width = 512;
+				light.shadow.mapSize.height = 512;
 				light.shadow.radius = 0;
 				light.shadow.camera.left = -extent;
 				light.shadow.camera.right = extent;
@@ -401,7 +542,7 @@
 				     transparent, so the cube sits in the page's paper void. -->
 				<T.Group position={[0, -0.25, 0]}>
 					<RigidBody type="fixed">
-						<AutoColliders shape="cuboid" friction={0.9} restitution={0.05}>
+						<AutoColliders shape="cuboid" friction={1.6} restitution={0.05}>
 							<T.Mesh receiveShadow>
 								<T.BoxGeometry args={[64, 0.5, 64]} />
 								<T.ShadowMaterial opacity={0.7} />
@@ -419,14 +560,11 @@
 						<SortScene {reduceMotion} onchange={handleSortChange} />
 					{/if}
 				{:else}
-					{#if cubes.length === 0}
+					{#if cubes.length === 0 && targets.length === 0}
 						<T.Group position={[0, HOVER_HEIGHT, 0]}>
 							<RigidBody bind:rigidBody type={bodyType} canSleep={false} ccd>
-								<AutoColliders shape="cuboid" friction={0.8} restitution={0.08}>
-									<T.Mesh castShadow receiveShadow>
-										<T.BoxGeometry args={[1, 1, 1]} />
-										<T.MeshStandardMaterial color={INK} roughness={0.8} metalness={0.1} />
-									</T.Mesh>
+								<AutoColliders shape="cuboid" density={40} friction={1.4} restitution={0.05}>
+									<InkedObject shape="box" size={[1, 1, 1]} color={INK} ink={PAPER} />
 								</AutoColliders>
 							</RigidBody>
 						</T.Group>
@@ -435,14 +573,39 @@
 					{#each cubes as cube (cube.id)}
 						<T.Group position={cube.position}>
 							<RigidBody type={cube.type} canSleep={false} ccd>
-								<AutoColliders shape="cuboid" friction={0.8} restitution={0.1}>
-									<T.Mesh castShadow receiveShadow>
-										<T.BoxGeometry args={[cube.size, cube.size, cube.size]} />
-										<T.MeshStandardMaterial color={cube.color} roughness={0.8} metalness={0.1} />
-									</T.Mesh>
+								<AutoColliders
+									shape={COLLIDER_SHAPE[cube.shape]}
+									density={40}
+									friction={1.4}
+									restitution={0.05}
+								>
+									{#snippet children({ refresh })}
+										<InkedObject
+											shape={cube.shape}
+											size={cube.size}
+											color={cube.color}
+											ink={PAPER}
+											onready={refresh}
+										/>
+									{/snippet}
 								</AutoColliders>
+								{#if cube.id === newestCube?.id}
+									<LivePosition onsample={handleLive} />
+								{/if}
 							</RigidBody>
 						</T.Group>
+					{/each}
+
+					{#each targets as target (target.id)}
+						<TargetBox position={target.position} size={target.size} ink={INK} />
+					{/each}
+
+					{#each phantoms as phantom (phantom.id)}
+						<PhantomCube
+							position={phantom.position}
+							size={phantom.size}
+							ondone={() => removePhantom(phantom.id)}
+						/>
 					{/each}
 				{/if}
 			</World>
@@ -458,12 +621,13 @@
 		min-height: 0;
 		background: var(--color-paper);
 		touch-action: none;
+		cursor: crosshair;
 	}
 
-	.motion-label {
+	.motion-label,
+	.readout {
 		position: absolute;
 		top: 1.2rem;
-		left: 1.2rem;
 		z-index: 1;
 		margin: 0;
 		padding: 0.5rem 0.8rem;
@@ -477,5 +641,13 @@
 		text-transform: uppercase;
 		white-space: nowrap;
 		pointer-events: none;
+	}
+
+	.motion-label {
+		left: 1.2rem;
+	}
+
+	.readout {
+		right: 1.2rem;
 	}
 </style>

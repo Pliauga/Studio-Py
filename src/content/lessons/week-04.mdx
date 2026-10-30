@@ -163,6 +163,21 @@ for record in records:
     print(f"{record['label']}: {status}")
 ```
 
+## The Lab
+
+Instead of standalone variables, let's see how a list chains data together. Run the script to spawn a linked list node.
+
+```python
+spawn_object(
+    position=(0, 8, 0),
+    shape="node",
+    size=(1.5, 1.5, 1.5),
+)
+drop_cube()
+```
+
+<SandboxEmbed caption="Week 04 / Linked list node" code="spawn_object(&#10;    position=(0, 8, 0),&#10;    shape='node',&#10;    size=(1.5, 1.5, 1.5),&#10;)&#10;drop_cube()" />
+
 ## The Debrief
 
 You can now load the whole export, address any row by field name, and keep running when a file is not where the manifest promised. The list of dicts is correct and the loader works. It is also the last time you will write this by hand, because next week the fleet gets a name and a behaviour, and a dict cannot answer `srv-07.status()`.

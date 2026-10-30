@@ -14,7 +14,7 @@
 
 	let { onEnter }: Props = $props();
 
-	const PROGRAM = `disk = {"used_gb": 91, "total_gb": 100}
+	const PROGRAM = `disk = {"used_gb: 91, "total_gb": 100}
 free = disk["total_gb"] - disk["used_gb"]
 print(f"{free} GB free")`;
 
@@ -123,7 +123,8 @@ print(f"{free} GB free")`;
 
 			phase = 'done';
 			output = outcome.output.trim() || '(the program printed nothing)';
-			// The print half answers the machine half: the poster inks to what the program said.
+			// The print half answers the machine half: the press jams, then the poster inks to what the program said.
+			plate.jam();
 			const density = densityFromRun(code, outcome.output);
 			if (density !== null) plate.set(density);
 		} catch (error) {
@@ -177,8 +178,8 @@ print(f"{free} GB free")`;
 		<button type="button" class="run" onclick={run} disabled={busy}>
 			<span aria-hidden="true">[</span> run <span aria-hidden="true">]</span>
 		</button>
-		<a class="index" href="/dashboard" onclick={onEnter}>
-			enter the index <span aria-hidden="true">→</span>
+		<a class="index" href="/lesson/week-01-variables-types-and-output" onclick={onEnter}>
+			open incident 01 <span aria-hidden="true">→</span>
 		</a>
 	</div>
 </section>
@@ -259,7 +260,8 @@ print(f"{free} GB free")`;
 		height: 98px;
 		margin: 0;
 		padding: 14px 14px 0;
-		overflow: hidden;
+		overflow-x: auto;
+		overflow-y: hidden;
 		font-family: var(--font-mono);
 		font-size: 13px;
 		line-height: 1.85;
@@ -348,30 +350,53 @@ print(f"{free} GB free")`;
 
 	.actions {
 		display: flex;
-		align-items: baseline;
-		gap: 18px;
-		padding: 11px 14px;
+		align-items: stretch;
+		gap: 12px;
+		padding: 12px 14px;
 		border-top: 1px solid rgba(241, 241, 241, 0.22);
 		font-size: 11px;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 	}
 
-	.run {
+	.run,
+	.index {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+		min-height: 36px;
+		padding: 0 16px;
+		border: 1px solid var(--color-snake);
 		font-family: var(--font-mono);
 		font-size: 11px;
+		line-height: 1;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		color: inherit;
-		background: none;
-		border: 0;
-		padding: 4px 0;
+		transition:
+			background 120ms linear,
+			color 120ms linear,
+			border-color 120ms linear;
+	}
+
+	/* Primary: the one solid block on the plate. Hover inverts it to a green outline. */
+	.run {
+		background: var(--color-snake);
+		color: #000000;
+		font-weight: 700;
 		cursor: pointer;
 	}
 
 	.run:hover,
 	.run:focus-visible {
+		background: #000000;
 		color: var(--color-snake);
+	}
+
+	.run:focus-visible,
+	.index:focus-visible {
+		outline: 2px solid #f1f1f1;
+		outline-offset: 2px;
 	}
 
 	.run:disabled {
@@ -379,15 +404,19 @@ print(f"{free} GB free")`;
 		opacity: 0.7;
 	}
 
+	/* Secondary: outlined, no fill. Hover fills it so the pair still reads as one control row. */
 	.index {
-		color: rgba(241, 241, 241, 0.8);
+		border-color: rgba(241, 241, 241, 0.5);
+		background: transparent;
+		color: #f1f1f1;
 		text-decoration: none;
 	}
 
 	.index:hover,
 	.index:focus-visible {
-		color: #f1f1f1;
-		text-decoration: underline;
+		border-color: #f1f1f1;
+		background: #f1f1f1;
+		color: #000000;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

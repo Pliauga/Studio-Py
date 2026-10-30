@@ -47,12 +47,12 @@ export const DARK_PALETTE: EditorPalette = {
 	surface: '#000000',
 	ink: '#f1f1f1',
 	muted: '#a3a2a7',
-	keyword: '#8cb4e3',
-	builtin: '#7bd0c6',
-	function: '#7bd0a8',
-	number: '#b99ee6',
-	string: '#e48c74',
-	comment: '#888888',
+	keyword: '#f1f1f1',
+	builtin: '#40f51a',
+	function: '#f1f1f1',
+	number: '#40f51a',
+	string: '#a3a2a7',
+	comment: '#777777',
 	selection: 'rgba(241, 241, 241, 0.22)'
 };
 
@@ -63,6 +63,7 @@ export const DARK_PALETTE: EditorPalette = {
 export const TERMINAL_PALETTE: EditorPalette = {
 	...DARK_PALETTE,
 	builtin: '#cfcdc7',
+	number: '#cfcdc7',
 	function: '#e6e4de'
 };
 

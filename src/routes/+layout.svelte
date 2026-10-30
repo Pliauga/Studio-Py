@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { flushSync, onMount } from 'svelte';
-	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto, onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import '../app.css';
 	import favicon from '#lib/assets/favicon.svg';
@@ -166,9 +166,7 @@
 		shutter.style.transform = start;
 		// Set the display imperatively: Svelte strips CSS it cannot see applied,
 		// so a class added only at runtime would never paint.
-		// The fixed head blends with its backdrop; a blended layer above an
-		// animating full-bleed plate forces a page-wide re-composite. The plate
-		// covers the head anyway, so it stands down for the portal's duration.
+		// The plate covers the head anyway, so the head stands down for the portal's duration.
 		document.documentElement.dataset.portalOpen = 'on';
 		root.style.display = 'block';
 		portalStep = 'opening';
@@ -261,6 +259,29 @@
 
 	afterNavigate(updateProgress);
 
+	type ViewTransitionDocument = Document & {
+		startViewTransition?: (callback: () => Promise<void> | void) => { finished: Promise<void> };
+	};
+
+	// Route changes here are client-side, so the `@view-transition` rule in the head — a
+	// cross-document rule — never fires on its own. Handing the navigation to
+	// startViewTransition is what makes one CSS definition cover both kinds of move.
+	onNavigate((navigation) => {
+		const doc = document as ViewTransitionDocument;
+		if (typeof doc.startViewTransition !== 'function') return;
+		// The ink portal already owns this navigation: it covers the viewport before `goto`
+		// and parts over the new page after it. A view transition paints its snapshots above
+		// that, so the two would double-expose the same 220ms. The portal wins because it is
+		// the longer, page-specific move; the transition takes every other route change.
+		if (document.documentElement.dataset.portalOpen) return;
+		return new Promise<void>((resolve) => {
+			doc.startViewTransition?.(async () => {
+				resolve();
+				await navigation.complete;
+			});
+		});
+	});
+
 	function toggleTheme(): void {
 		applyTheme(theme === 'dark' ? 'light' : 'dark', true);
 	}
@@ -269,10 +290,15 @@
 <svelte:head>
 	<link rel="icon" href={favicon} />
 	<meta name="theme-color" content="#f1f1f1" />
+	<!-- Cross-document moves (a reload, a shared link) animate with the same CSS the
+	     client-side moves below are wrapped in. -->
+	<style>
+		@view-transition {
+			navigation: auto;
+		}
+	</style>
 </svelte:head>
 
-<!-- The difference blend flips the chrome from black to white against whatever
-     it crosses, so the header needs no background of its own. -->
 <header class="site-head">
 	<a class="wordmark" href="/">Studio Py</a>
 	{#if page.url.pathname.startsWith('/lesson/')}
@@ -289,11 +315,13 @@
 	</button>
 </header>
 
-<!-- Sibling of the header and `.page`, so neither the blend nor the page fade touches it. -->
+<!-- Sibling of the header and `.page`, so the page fade never touches it. -->
 <div class="progress" aria-hidden="true"><div class="progress-fill" bind:this={progressBar}></div></div>
 
 {#key page.url.pathname}
-	<div class="page" class:routed>{@render children()}</div>
+	<div class="page" class:routed style="view-transition-name: page-transition;">
+		{@render children()}
+	</div>
 {/key}
 
 <!-- Portal: an ink plate floods from the clicked card, holds, then parts at its
@@ -326,22 +354,26 @@
 		visibility: hidden;
 	}
 
+	/* A structural beam of the grid: solid paper, one ink rule, above everything but the
+	   portal. Content slides under it; nothing shows through. */
+	:global(:root) {
+		--head-h: 64px;
+	}
+
 	.site-head {
 		position: fixed;
 		inset: 0 0 auto;
-		z-index: 50;
+		z-index: 100;
+		box-sizing: border-box;
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		justify-content: space-between;
 		gap: clamp(12px, 2vw, 32px);
-		padding: clamp(16px, 3.5vw, 48px) clamp(16px, 4vw, 64px);
-		mix-blend-mode: difference;
-		color: #ffffff;
-		pointer-events: none;
-	}
-
-	.site-head > * {
-		pointer-events: auto;
+		height: var(--head-h);
+		padding: 0 clamp(16px, 4vw, 64px);
+		border-bottom: 1px solid var(--color-ink);
+		background: var(--color-paper);
+		color: var(--color-ink);
 	}
 
 	.wordmark {
@@ -410,17 +442,16 @@
 
 	.progress {
 		position: fixed;
-		inset: 0 0 auto;
-		z-index: 51;
-		height: 2px;
+		inset: calc(var(--head-h) - 1px) 0 auto;
+		z-index: 101;
+		height: 3px;
 		pointer-events: none;
-		mix-blend-mode: difference;
 	}
 
 	.progress-fill {
 		width: 100%;
 		height: 100%;
-		background: #ffffff;
+		background: var(--color-snake);
 		transform: scaleX(0);
 		transform-origin: left;
 		/* Scroll-follow, not a state change: linear and short so it tracks the thumb. */
@@ -549,8 +580,7 @@
 		right: 22px;
 	}
 
-	/* The header is a sibling of `.page`, never inside its opacity animation:
-	   mix-blend-mode needs an unstabilised backdrop to read correctly. */
+	/* The header is a sibling of `.page`, so the page fade never dims the beam. */
 	@keyframes page-in {
 		from {
 			opacity: 0;
@@ -573,8 +603,12 @@
 	}
 
 	@media (max-width: 520px) {
+		:global(:root) {
+			--head-h: 56px;
+		}
+
 		.site-head {
-			padding: 16px;
+			padding: 0 16px;
 		}
 	}
 </style>

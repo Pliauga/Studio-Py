@@ -1,5 +1,7 @@
 <script lang="ts">
-	import Sandbox from '#lib/components/scene/Sandbox.svelte';
+	import { onMount } from 'svelte';
+	import type SandboxComponent from '#lib/components/scene/Sandbox.svelte';
+	import RegistrationMarks from '#lib/components/RegistrationMarks.svelte';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
 
 	type SandboxHandle = {
@@ -7,12 +9,26 @@
 		reset: () => void;
 	};
 
+	let Sandbox = $state<typeof SandboxComponent>();
 	let sandbox = $state<SandboxHandle>();
 	let dropped = $state(false);
 
-	const SAMPLE = 'spawn_cube(position=(0, 8, 0), color="#000000", size=1.5)\ndrop_cube()';
+	const SAMPLE =
+		'spawn_object(position=(0, 8, 0), shape="sphere", size=(1.5, 1.5, 1.5))\ndrop_cube()';
 	let code = $state(SAMPLE);
 	const running = $derived(pythonRunner.isRunning);
+	const error = $derived(pythonRunner.error);
+
+	// Three and Rapier are heavy: keep them out of the route's initial chunk.
+	onMount(() => {
+		import('#lib/components/scene/Sandbox.svelte')
+			.then((module) => {
+				Sandbox = module.default;
+			})
+			.catch((error: unknown) => {
+				console.error('Sandbox failed to load', error);
+			});
+	});
 
 	function drop() {
 		sandbox?.drop();
@@ -39,13 +55,16 @@
 		<p class="kicker">Internal preview / 3D</p>
 		<h1>Threlte / Rapier sandbox</h1>
 		<p class="lede">
-			A borderless Threlte canvas for the 3D physics sandbox. One hard light, no ambient fill, no
+			A framed Threlte canvas for the 3D physics sandbox. One hard light, no ambient fill, no
 			post-processing. Drop the cube to switch its rigid body from kinematic to dynamic.
 		</p>
 	</header>
 
 	<div class="stage">
-		<Sandbox bind:this={sandbox} />
+		{#if Sandbox}
+			<Sandbox bind:this={sandbox} />
+		{/if}
+		<RegistrationMarks />
 	</div>
 
 	<textarea bind:value={code} rows="3" spellcheck="false" aria-label="Python code"></textarea>
@@ -57,6 +76,10 @@
 		<button type="button" onclick={drop} disabled={dropped}>Drop cube</button>
 		<button type="button" onclick={reset} disabled={!dropped}>Reset</button>
 	</div>
+
+	{#if error}
+		<pre class="trace" aria-live="polite">{error}</pre>
+	{/if}
 </main>
 
 <style>
@@ -64,7 +87,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: clamp(16px, 2.4rem, 32px);
-		height: 100svh;
+		min-height: 100svh;
 		margin: 0 auto;
 		max-width: 1100px;
 		padding: clamp(88px, 11vh, 140px) clamp(24px, 5vw, 44px) clamp(32px, 4vh, 56px);
@@ -96,8 +119,11 @@
 	}
 
 	.stage {
-		flex: 1;
-		min-height: 320px;
+		position: relative;
+		width: 100%;
+		aspect-ratio: 16 / 9;
+		min-height: 500px;
+		border: 1px solid var(--color-ink);
 	}
 
 	textarea {
@@ -122,6 +148,16 @@
 		gap: 0.8rem;
 	}
 
+	.trace {
+		margin: 0;
+		padding: clamp(10px, 1rem, 14px) clamp(12px, 1.4rem, 18px);
+		border: 1px solid var(--color-ink);
+		font: 1.3rem/1.6 var(--font-mono);
+		white-space: pre-wrap;
+		overflow: auto;
+		max-height: 18rem;
+	}
+
 	button {
 		padding: clamp(10px, 1.1rem, 15px) clamp(12px, 1.8rem, 20px);
 		border: 1px solid var(--color-ink);
@@ -140,8 +176,8 @@
 
 	button:hover:not(:disabled),
 	button:focus-visible {
-		background: var(--color-ink);
-		color: var(--color-paper);
+		background: var(--color-snake);
+		color: var(--color-ink);
 	}
 
 	button:focus-visible {

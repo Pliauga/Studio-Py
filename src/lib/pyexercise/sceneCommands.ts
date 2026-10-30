@@ -2,11 +2,15 @@
 // sandbox. Python emits one JSON object per call; the store stamps a `seq`.
 export type Vec3 = [number, number, number];
 
+/** Shapes the sandbox can spawn: Three.js primitives plus the voxel snake model. */
+export type SpawnShape = 'box' | 'sphere' | 'cylinder' | 'node' | 'snake';
+
 /** One row of the Week 6 data sculpture: two Troika labels per block. */
 export type DataFrameRow = { host: string; status: string };
 
 export type SceneCommand =
-	| { type: 'spawn'; position: Vec3; color: string; size: number }
+	| { type: 'spawn'; position: Vec3; shape: SpawnShape; color: string; size: Vec3 }
+	| { type: 'phantom'; position: Vec3; size: number }
 	| { type: 'drop' }
 	| { type: 'stack_push'; value: string }
 	| { type: 'stack_pop' }

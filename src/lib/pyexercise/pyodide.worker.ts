@@ -39,19 +39,43 @@ from _scene_bridge import emit as _emit
 _HEX_COLOR = _re.compile(r"^#[0-9a-fA-F]{6}$")
 _STACK_EVENTS = []
 
-def spawn_cube(position=(0, 10, 0), color="#000000", size=1.0):
+_SHAPES = ("box", "sphere", "cylinder", "node", "snake")
+
+def _spawn_axes(position, where):
     try:
-        x, y, z = (float(v) for v in position)
+        axes = tuple(float(v) for v in position)
     except (TypeError, ValueError):
-        raise ValueError("position must be three numbers, e.g. (0, 10, 0)") from None
-    if not all(_math.isfinite(v) for v in (x, y, z)):
-        raise ValueError("position must be finite numbers")
+        raise ValueError(f"{where}: position must be three numbers, e.g. (0, 10, 0)") from None
+    if len(axes) != 3 or not all(_math.isfinite(v) for v in axes):
+        raise ValueError(f"{where}: position must be three finite numbers")
+    return axes
+
+def _spawn_size(size, where):
+    if isinstance(size, (int, float)):
+        size = (size, size, size)
+    try:
+        dims = tuple(float(v) for v in size)
+    except (TypeError, ValueError):
+        raise ValueError(f"{where}: size must be a number or three numbers, e.g. (1.5, 1.5, 1.5)") from None
+    if len(dims) != 3 or not all(_math.isfinite(v) and v > 0 for v in dims):
+        raise ValueError(f"{where}: size must be three positive finite numbers")
+    return dims
+
+def spawn_object(position=(0, 10, 0), shape="box", size=(1.5, 1.5, 1.5), color="#000000"):
+    """Drops a primitive from the drafting table: box, sphere, cylinder, node or snake."""
+    x, y, z = _spawn_axes(position, "spawn_object")
+    if not isinstance(shape, str) or shape not in _SHAPES:
+        raise ValueError(f"spawn_object: shape must be one of {', '.join(_SHAPES)}")
     if not isinstance(color, str) or not _HEX_COLOR.match(color):
         raise ValueError('color must be a hex string like "#000000"')
-    size = float(size)
-    if not _math.isfinite(size) or size <= 0:
-        raise ValueError("size must be a positive number")
-    _emit(_json.dumps({"type": "spawn", "position": [x, y, z], "color": color, "size": size}))
+    size = _spawn_size(size, "spawn_object")
+    if y < 0:
+        _emit(_json.dumps({"type": "phantom", "position": [x, y, z], "size": max(size)}))
+        raise ValueError(f"spawn_object: y={y:g} is below the drafting table; y must be >= 0")
+    _emit(_json.dumps({"type": "spawn", "position": [x, y, z], "shape": shape, "color": color, "size": list(size)}))
+
+def spawn_cube(position=(0, 10, 0), color="#000000", size=1.0):
+    spawn_object(position=position, shape="box", size=size, color=color)
 
 def drop_cube():
     _emit(_json.dumps({"type": "drop"}))
