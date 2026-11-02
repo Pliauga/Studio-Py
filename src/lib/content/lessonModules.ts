@@ -5,7 +5,7 @@ import type { Component } from 'svelte';
  * `metadata` module export, so the route slug is the frontmatter `id` — never
  * the file name.
  *
- * The glob is lazy: one week is a few kB, and eagerly importing all twenty-five
+ * The glob is lazy: one week is a few kB, and eagerly importing all twenty-four
  * of them put the whole curriculum in the lesson route's first payload (601 kB).
  * `preloadLesson` runs inside the route's `load`, so the article is still
  * server-rendered — only the requested week is fetched.

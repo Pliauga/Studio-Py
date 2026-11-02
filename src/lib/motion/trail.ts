@@ -42,10 +42,16 @@ const EXERCISE = '[data-testid="pyexercise"]';
 /** Where on screen "reached" is read: a heading above this line has been read. */
 const READ_LINE = 0.6;
 
-/** Reports the head's position as a percentage of the trail; returns the cleanup. */
+/** Reports the head's position as a percentage of the trail; returns the cleanup.
+ *
+ *  `scroller` is the element the lesson actually scrolls inside. The lesson is a window
+ *  with its own overflow, so the document never scrolls and a `window` listener would
+ *  leave the snake frozen at its first waypoint for the whole read.
+ */
 export function trackWaypoints(
 	trail: HTMLElement,
 	article: HTMLElement,
+	scroller: HTMLElement | null,
 	report: (percent: number) => void
 ): () => void {
 	let frame = 0;
@@ -71,7 +77,11 @@ export function trackWaypoints(
 			if (exercise.classList.contains('is-passed')) sections[index].passed += 1;
 		}
 
-		const anchor = window.innerHeight * READ_LINE - box.top;
+		// The read line follows whichever box actually scrolls the article.
+		const readLine = scroller
+			? scroller.getBoundingClientRect().top + scroller.clientHeight * READ_LINE
+			: window.innerHeight * READ_LINE;
+		const anchor = readLine - box.top;
 		const y = headOffset(sections, box.height, anchor);
 		report(box.height > 0 ? Math.min(100, (y / box.height) * 100) : 0);
 	}
@@ -89,7 +99,8 @@ export function trackWaypoints(
 	});
 	const resizes = new ResizeObserver(schedule);
 	resizes.observe(trail);
-	window.addEventListener('scroll', schedule, { passive: true });
+	const scrollTarget: HTMLElement | Window = scroller ?? window;
+	scrollTarget.addEventListener('scroll', schedule, { passive: true });
 	window.addEventListener('resize', schedule);
 	schedule();
 
@@ -97,7 +108,7 @@ export function trackWaypoints(
 		if (frame) cancelAnimationFrame(frame);
 		mutations.disconnect();
 		resizes.disconnect();
-		window.removeEventListener('scroll', schedule);
+		scrollTarget.removeEventListener('scroll', schedule);
 		window.removeEventListener('resize', schedule);
 	};
 }

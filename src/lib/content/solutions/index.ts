@@ -1,4 +1,3 @@
-import week00 from './week-00';
 import week01 from './week-01';
 import week02 from './week-02';
 import week03 from './week-03';
@@ -30,7 +29,6 @@ import week24 from './week-24';
  * and the student's peek; `pnpm lint:solutions` fails when the two drift.
  */
 const solutions: Record<string, string> = {
-	...week00,
 	...week01,
 	...week02,
 	...week03,

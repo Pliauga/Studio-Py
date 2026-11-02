@@ -631,10 +631,13 @@
 		font-family: var(--font-mono);
 	}
 
+	/* The console column is narrower inside the CRT bezel than on the print page, so the
+	   nowrap shortcut label and the action buttons no longer share one line. */
 	.toolbar {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		flex-wrap: wrap;
 		gap: 1.2rem;
 		padding: 0.75rem 1rem;
 		border-top: 1px solid var(--color-ink);

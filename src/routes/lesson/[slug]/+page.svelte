@@ -1,9 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Canvas } from '@threlte/core';
-	import { World } from '@threlte/rapier';
-	import { NoToneMapping, PCFShadowMap } from 'three';
-	import Monitor from '#lib/components/scene/Monitor.svelte';
 	import InkStamp from '#lib/components/InkStamp.svelte';
 	import RegistrationMarks from '#lib/components/RegistrationMarks.svelte';
 	import SnakeSpine from '#lib/components/SnakeSpine.svelte';
@@ -11,8 +7,9 @@
 	import { MODULES } from '#lib/content/lessons.ts';
 	import { lessonComponent } from '#lib/content/lessonModules.ts';
 	import { sizeTier } from '#lib/content/chapters.ts';
-	import AsciiOperator from '#lib/components/AsciiOperator.svelte';
 	import { progress, STATUS_LABEL } from '#lib/stores/progress.svelte.ts';
+	import { openWindows } from '#lib/stores/os.svelte.ts';
+	import { goto } from '$app/navigation';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -30,50 +27,82 @@
 
 	const pad = (n: number) => String(n).padStart(2, '0');
 
+	/** The window's file name: the lesson as an executable in the OS façade. */
+	const filename = $derived(
+		`W${pad(module.week)}_${module.title
+			.toUpperCase()
+			.replace(/[^A-Z0-9]+/g, '_')
+			.replace(/^_|_$/g, '')}.exe`
+	);
+
 	let trail = $state<HTMLDivElement | null>(null);
 	let article = $state<HTMLElement | null>(null);
+	let scroller = $state<HTMLDivElement | null>(null);
 	/** Where the snake's head rests along the article: the waypoint the reader is on. */
 	let waypoint = $state(0);
-	/** The machine half is the default; the print half is one switch away. */
-	let crtMode = $state(true);
-	/** Set only by the switch, so the scanlines flicker out on a toggle and not on first paint. */
-	let flickering = $state(false);
-	/** The 3D bezel is client-only; the CSS frame stands in for it on the server. */
-	let mounted = $state(false);
-	const CRT_STORAGE_KEY = 'studio-py:crt-mode';
+	/** The green light's state: the window covers the whole desktop when true. */
+	let maximized = $state(false);
 
-	function toggleCrt(): void {
-		crtMode = !crtMode;
-		flickering = !crtMode;
-		try {
-			localStorage.setItem(CRT_STORAGE_KEY, String(crtMode));
-		} catch {
-			/* Storage can be blocked; the hardware switch still works for this visit. */
-		}
+	// Opening the window registers it with the desktop, so the taskbar can carry its tab
+	// while it is minimised.
+	$effect(() => {
+		openWindows.currentLesson = module.slug;
+		openWindows.isMinimized = false;
+	});
+
+	/** The red light: the window is gone, and the desktop forgets it. */
+	function closeWindow(): void {
+		openWindows.currentLesson = null;
+		openWindows.isMinimized = false;
+		void goto('/dashboard');
 	}
+
+	/** The yellow light: the window leaves the screen but keeps its taskbar tab. */
+	function minimizeWindow(): void {
+		openWindows.isMinimized = true;
+		void goto('/dashboard');
+	}
+
+	/** The green light: the window either fills the desktop or returns to its frame. */
+	function toggleMaximize(): void {
+		maximized = !maximized;
+	}
+
+	// A maximised window owns the whole viewport, including the strip the fixed site header
+	// floats over. Without this the header would sit on the title bar and cover the lights.
+	$effect(() => {
+		if (maximized) document.documentElement.dataset.osMaximized = 'on';
+		else delete document.documentElement.dataset.osMaximized;
+		return () => {
+			delete document.documentElement.dataset.osMaximized;
+		};
+	});
+
+	const traffic = [
+		{ tone: 'red', mark: '×', label: 'Close window', act: closeWindow },
+		{ tone: 'yellow', mark: '-', label: 'Minimise window', act: minimizeWindow },
+		{ tone: 'green', mark: '+', label: 'Maximise window', act: toggleMaximize }
+	] as const;
 
 	// Reading the article is what marks a lesson opened; `complete()` is the
 	// only explicit act, so the dashboard never overstates progress.
 	onMount(() => {
-		mounted = true;
-		try {
-			crtMode = localStorage.getItem(CRT_STORAGE_KEY) !== 'false';
-		} catch {
-			/* Storage can be blocked; the machine default applies. */
-		}
 		if (progress.statusOf(module.slug) === 'not-started') progress.set(module.slug, 'in-progress');
 
-		const stopTrail = trail && article ? trackWaypoints(trail, article, (percent) => (waypoint = percent)) : undefined;
-		return () => {
-			stopTrail?.();
-			delete document.documentElement.dataset.crt;
-		};
+		const stopTrail =
+			trail && article
+				? trackWaypoints(trail, article, scroller, (percent) => (waypoint = percent))
+				: undefined;
+		return () => stopTrail?.();
 	});
 
-	// The mode lives on `<html>` so the header, the body paper, the editor and the sandbox
-	// all read one switch; the inline script in app.html sets it before first paint.
+	// The lesson is a terminal window, so the machine palette is no longer a mode: the
+	// editor and the sandbox read `data-crt` for their own surfaces and must stay dark.
 	$effect(() => {
-		document.documentElement.dataset.crt = crtMode ? 'on' : 'off';
+		document.documentElement.dataset.crt = 'on';
+		return () => {
+			delete document.documentElement.dataset.crt;
+		};
 	});
 
 	function toggleComplete(): void {
@@ -86,34 +115,30 @@
 	<meta name="description" content={module.summary} />
 </svelte:head>
 
-<div
-	class="crt-scan"
-	class:on={crtMode}
-	class:flicker={flickering}
-	onanimationend={() => (flickering = false)}
-	aria-hidden="true"
-></div>
-
-{#if crtMode}
-	<div class="screen-bg" aria-hidden="true"></div>
-	<div class="bezel-layer" aria-hidden="true">
-		{#if mounted}
-			<Canvas renderMode="on-demand" toneMapping={NoToneMapping} shadows={PCFShadowMap} dpr={[1, 2]}>
-				<World autoStart={false} gravity={[0, 0, 0]}>
-					<Monitor />
-				</World>
-			</Canvas>
-		{/if}
-	</div>
-	<div class="glass-layer" aria-hidden="true"></div>
-{/if}
-
-<div class="lesson-content" class:crt={crtMode}>
-{#if crtMode}
-	<AsciiOperator />
-{/if}
-<main class="reader" class:crt={crtMode}>
-	<div class="sheet">
+<div class="desktop" class:maximized>
+	<div class="os-window" class:maximized>
+		<div class="crt-scan on" aria-hidden="true"></div>
+		<div class="title-bar">
+			<span class="traffic">
+				{#each traffic as light (light.tone)}
+					<button
+						type="button"
+						class="light {light.tone}"
+						aria-label={light.label}
+						aria-pressed={light.tone === 'green' ? maximized : undefined}
+						title={light.label}
+						onclick={light.act}
+					>
+						<span class="mark" aria-hidden="true">{light.mark}</span>
+					</button>
+				{/each}
+			</span>
+			<span class="window-name">{filename}</span>
+			<a class="window-close" href="/dashboard">[ CLOSE ]</a>
+		</div>
+		<div class="window-content" bind:this={scroller}>
+			<main class="reader crt">
+				<div class="sheet">
 		<RegistrationMarks />
 
 		<header class="hero">
@@ -128,18 +153,6 @@
 					<span class="sep">—</span>
 					Week {pad(module.week)} · {module.estimatedMinutes} min · {STATUS_LABEL[status]}
 				</p>
-				<button
-					class="crt-switch"
-					type="button"
-					role="switch"
-					aria-checked={crtMode}
-					aria-label="CRT mode"
-					onclick={toggleCrt}
-				>
-					<span class="crt-label">CRT MODE:</span>
-					<span class="pos" class:active={crtMode}>[ ON ]</span>
-					<span class="pos" class:active={!crtMode}>[ OFF ]</span>
-				</button>
 				<h1 id={headingId} aria-label={module.title} data-text={module.title}>{module.title}</h1>
 				<p class="lede">{module.summary}</p>
 			</div>
@@ -193,10 +206,19 @@
 			</nav>
 		</footer>
 	</div>
-</main>
+			</main>
+		</div>
+	</div>
 </div>
 
 <style>
+	/* A maximised window is the only thing on screen, so the site header steps out of the
+	   way rather than floating over the title bar. */
+	:global(html[data-os-maximized='on']) :global(.site-head),
+	:global(html[data-os-maximized='on']) :global(.progress) {
+		visibility: hidden;
+	}
+
 	/* ---- The machine half ------------------------------------------------------------
 	   The mode is a switch on <html>, so the header, body paper, editor and sandbox all
 	   read the same palette. ON is a 1970s mainframe terminal; OFF is the printed page. */
@@ -232,19 +254,31 @@
 		--syntax-comment: #828282;
 	}
 
-	/* A monitor warming up or cooling down: paper, ink and scanlines move together. */
-	:global(html[data-crt] body),
-	:global(html[data-crt] .site-head),
-	.reader,
-	.sheet {
-		transition: all 0.2s ease-out;
+	/* ---- The desktop ------------------------------------------------------------------
+	   The lesson is an application floating over the OS desktop: a yellow work surface with
+	   a faint cutting-mat grid, and the terminal window resting on it. The desktop is its
+	   own scroll box so the window can be a fixed-height pane with an internal scroll of
+	   its own — the chrome never leaves the viewport while the lesson is read. */
+	.desktop {
+		position: relative;
+		min-height: 100svh;
+		/* The site header is fixed and a sibling of this page, so the work surface has to
+		   start below it or the window's title bar slides underneath the chrome. */
+		padding: calc(var(--head-h) + clamp(16px, 3vw, 40px)) clamp(16px, 3vw, 40px)
+			clamp(16px, 3vw, 40px);
+		background-color: #f4e05e;
+		background-image:
+			linear-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(0, 0, 0, 0.08) 1px, transparent 1px);
+		background-size: 20px 20px;
 	}
 
-	/* The scanlines are the screen's own life: a fixed raster that drifts slowly. */
+	/* Scanlines belong to the window's screen, not the desktop: the raster is clipped to the
+	   terminal so the yellow work surface stays clean. */
 	.crt-scan {
-		position: fixed;
+		position: absolute;
 		inset: 0;
-		z-index: 50;
+		z-index: 2;
 		background: repeating-linear-gradient(
 			to bottom,
 			transparent 0 2px,
@@ -253,17 +287,11 @@
 		background-size: 100% 8px;
 		opacity: 0;
 		pointer-events: none;
-		transition: all 0.2s ease-out;
 	}
 
 	.crt-scan.on {
 		opacity: 1;
 		animation: scan-drift 6s linear infinite;
-	}
-
-	/* Switching off is a tube losing power, not a fade: a few hard flickers, then dark. */
-	.crt-scan.flicker {
-		animation: crt-flicker 360ms steps(1, end) forwards;
 	}
 
 	@keyframes scan-drift {
@@ -272,109 +300,187 @@
 		}
 	}
 
-	@keyframes crt-flicker {
-		0% {
-			opacity: 1;
-		}
-		20% {
-			opacity: 0.25;
-		}
-		40% {
-			opacity: 0.9;
-		}
-		60% {
-			opacity: 0.1;
-		}
-		80% {
-			opacity: 0.5;
-		}
-		100% {
-			opacity: 0;
-		}
+	/* The application window: a hard frame with a heavy offset shadow, sized to the
+	   viewport so it reads as a window and not as another page. */
+	.os-window {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		max-width: 1200px;
+		height: calc(100svh - var(--head-h) - clamp(32px, 6vw, 80px));
+		min-height: 420px;
+		margin: 0 auto;
+		border: 2px solid #000;
+		background: #02100a;
+		box-shadow: 15px 15px 0 rgba(0, 0, 0, 0.8);
+		overflow: hidden;
 	}
 
-	/* ---- The chassis ------------------------------------------------------------------
-	   The monitor is permanent chrome fixed to the viewport; the lesson scrolls natively
-	   beneath it, so the sticky console and the window scroll stay on the fast path. The
-	   screen tint sits behind the text, the glass over it, the 3D bezel over both, and
-	   below the site header. */
-	.screen-bg,
-	.bezel-layer,
-	.glass-layer {
-		--bezel-w: clamp(24px, 5vw, 72px);
-		position: fixed;
-		inset: var(--head-h) 0 0;
+	/* The title bar: traffic lights on the left, the file name centred, close on the right.
+	   The name is absolutely centred so the two side groups can size independently. */
+	.title-bar {
+		position: relative;
+		/* Above the scanline raster: the CRT belongs to the screen below the chrome. */
+		z-index: 3;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex: none;
+		padding: 8px 16px;
+		border-bottom: 2px solid #000;
+		background: #e0e0e0;
+		color: #000;
+		font-family: var(--font-terminal);
+		font-weight: bold;
+		font-size: clamp(0.8rem, 1.5vw, 1rem);
+		line-height: 1.2;
+		user-select: none;
+	}
+
+	.traffic {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex: none;
+	}
+
+	/* The lights are buttons, so they take the default form chrome off and keep the
+	   circle: hit area is the disc itself, padded to a comfortable 18px. */
+	.light {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: 0;
+		border-radius: 50%;
+		background: none;
+		cursor: pointer;
+	}
+
+	/* The disc itself, drawn by the pseudo-element so the button can be larger than the
+	   dot without the dot growing with it. */
+	.light::before {
+		content: '';
+		width: 12px;
+		height: 12px;
+		border: 1px solid rgba(0, 0, 0, 0.55);
+		border-radius: 50%;
+	}
+
+	/* The mark only appears on hover, the way a managed window behaves: the dots are the
+	   chrome, the marks are the affordance. */
+	.light .mark {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		font-family: var(--font-terminal);
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1;
+		color: rgba(0, 0, 0, 0.72);
+		opacity: 0;
 		pointer-events: none;
 	}
 
-	.screen-bg {
-		z-index: 0;
-		background: radial-gradient(ellipse at center, #0b2c18 0%, #02100a 60%, #0a0a0a 100%);
+	.light:hover .mark,
+	.light:focus-visible .mark {
+		opacity: 1;
 	}
 
-	/* The gradient frame is the server-rendered stand-in until the 3D bezel mounts. */
-	.bezel-layer :global(div),
-	.bezel-layer :global(canvas) {
-		background: transparent;
+	.light:focus-visible {
+		outline: 2px solid #000;
+		outline-offset: 2px;
 	}
 
-	.bezel-layer {
-		z-index: 2;
-		box-shadow: inset 0 0 0 var(--bezel-w) #2e2d28;
+	.light.red::before {
+		background: #ff5f57;
 	}
 
-	/* The glass fills the screen hole, above the bezel, so its outer glow lands on the lip:
-	   the text appears to light the plastic around it. */
-	.glass-layer {
-		inset: calc(var(--head-h) + var(--bezel-w)) var(--bezel-w) var(--bezel-w);
-		z-index: 3;
-		border-radius: 6% / 8%;
-		background: repeating-linear-gradient(
-			to bottom,
-			rgba(0, 0, 0, 0.4) 0px,
-			rgba(0, 0, 0, 0.4) 1px,
-			transparent 1px,
-			transparent 3px
-		);
-		box-shadow:
-			inset 0 0 150px rgba(0, 0, 0, 1),
-			0 0 40px rgba(51, 255, 0, 0.1);
-		backdrop-filter: brightness(1.05);
+	.light.yellow::before {
+		background: #febc2e;
 	}
 
-	/* The vignette darkens the corners; the glare is a fluorescent reflection. */
-	.glass-layer::before {
-		content: '';
-		position: absolute;
-		inset: 0;
-		border-radius: inherit;
-		background: radial-gradient(circle at center, transparent 60%, rgba(0, 0, 0, 0.7) 100%);
+	.light.green::before {
+		background: #28c840;
 	}
 
-	.glass-layer::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		border-radius: inherit;
-		background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 30%);
+	/* Maximised, the window is the desktop: no frame, no offset shadow, no inset. */
+	.os-window.maximized {
+		width: 100vw;
+		height: 100vh;
+		max-width: 100vw;
+		border-radius: 0;
+		border: none;
+		box-shadow: none;
+		top: 0;
+		left: 0;
+		transform: none;
 	}
 
-	.lesson-content {
-		position: relative;
-		z-index: 1;
-	}
-
-	.lesson-content.crt {
-		padding: 12vh 10vw;
-	}
-
-	.reader {
-		position: relative;
-		z-index: 1;
-	}
-
-	.reader.crt {
+	/* The work surface gives up its padding and its grid when the window is maximised, so
+	   the window's 100vh is the real viewport rather than the area inside the mat. */
+	.desktop.maximized {
 		padding: 0;
+		background-image: none;
+	}
+
+	.window-name {
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+		max-width: calc(100% - 15rem);
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		letter-spacing: 0.02em;
+	}
+
+	.window-close {
+		flex: none;
+		color: #000;
+		text-decoration: none;
+		letter-spacing: 0.02em;
+	}
+
+	.window-close:hover,
+	.window-close:focus-visible {
+		background: #000;
+		color: #e0e0e0;
+	}
+
+	/* The pane the lesson scrolls inside. `overscroll-behavior` keeps the wheel from
+	   chaining out to the document once the lesson hits its end. */
+	.window-content {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 2rem;
+	}
+
+	@media (max-width: 900px) {
+		.os-window {
+			height: auto;
+			min-height: 0;
+			box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.8);
+		}
+
+		/* Under 900px the window grows with its content and the page itself scrolls; a
+		   fixed-height pane would strand the reader in a two-line viewport. */
+		.window-content {
+			overflow: visible;
+			padding: 1.1rem 0.6rem;
+		}
+
+		.window-name {
+			max-width: calc(100% - 11rem);
+			font-size: 0.78rem;
+		}
 	}
 
 	/* ---- The phosphor ----------------------------------------------------------------
@@ -399,24 +505,29 @@
 		text-shadow: 0 0 2px rgba(51, 255, 0, 0.4);
 	}
 
-	/* Headers: a white-hot core with a tight halo; the wide bloom is a blurred green copy
-	   behind it, read from `data-text`, so the light bleeds without softening a glyph. */
+	/* Headers: solid phosphor green under a layered halo. The bloom is a stack of shadows
+	   rather than one blurred duplicate, so every heading gets it — including the MDX `h2`s
+	   and `h3`s, which carry no `data-text` attribute to copy. */
 	.reader.crt h1,
-	.reader.crt .prose :global(h2) {
+	.reader.crt .prose :global(h2),
+	.reader.crt .prose :global(h3) {
 		position: relative;
 		isolation: isolate;
 		z-index: 1;
 		font-family: var(--font-pixel);
 		font-weight: 400;
 		letter-spacing: 0;
-		color: #e6ffe6;
+		color: #33ff00;
 		text-shadow:
-			0 0 2px #a3ffa3,
-			0 0 4px #00ff00;
+			0 0 4px rgba(51, 255, 0, 0.9),
+			0 0 10px rgba(51, 255, 0, 0.75),
+			0 0 22px rgba(51, 255, 0, 0.5),
+			0 0 44px rgba(51, 255, 0, 0.28);
 	}
 
-	.reader.crt h1::after,
-	.reader.crt .prose :global(h2)::after {
+	/* The h1 alone also gets a wide blurred copy behind it, so the title bleeds light
+	   without softening its own glyphs. */
+	.reader.crt h1::after {
 		content: attr(data-text);
 		position: absolute;
 		top: 0;
@@ -424,15 +535,11 @@
 		right: 0;
 		z-index: -1;
 		color: #00ff00;
-		filter: blur(8px);
-		opacity: 0.8;
+		filter: blur(12px);
+		opacity: 0.85;
 		mix-blend-mode: screen;
 		pointer-events: none;
 		user-select: none;
-	}
-
-	.reader.crt .prose :global(h2)::after {
-		top: 10px;
 	}
 
 	.reader.crt h1 {
@@ -452,73 +559,6 @@
 		font-family: var(--font-pixel);
 		font-size: 1.5rem;
 		letter-spacing: 0.1em;
-	}
-
-	/* ---- The hardware switch ---------------------------------------------------------- */
-	.crt-switch {
-		display: inline-flex;
-		margin: 0 0 24px;
-		align-items: stretch;
-		gap: 0;
-		padding: 0;
-		border: 3px solid #0b0b0b;
-		border-radius: 4px;
-		background: #1f1f1f;
-		box-shadow:
-			inset 0 4px 8px rgba(0, 0, 0, 0.8),
-			inset 0 -2px 0 rgba(255, 255, 255, 0.1),
-			0 4px 0 #000,
-			0 6px 10px rgba(0, 0, 0, 0.6);
-		font-family: var(--font-pixel);
-		font-size: 1.6rem;
-		line-height: 1;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: #cfcfcf;
-		cursor: pointer;
-		transition:
-			transform 60ms linear,
-			box-shadow 60ms linear;
-	}
-
-	/* Pressed into the bezel: it drops, and the light moves from outside to inside. */
-	.crt-switch:active {
-		transform: translateY(2px);
-		box-shadow:
-			inset 0 -4px 8px rgba(0, 0, 0, 0.8),
-			inset 0 2px 0 rgba(255, 255, 255, 0.08),
-			0 1px 0 #000,
-			0 2px 4px rgba(0, 0, 0, 0.6);
-	}
-
-	.crt-switch .crt-label,
-	.crt-switch .pos {
-		padding: 0.7rem 1.1rem;
-	}
-
-	.crt-switch .crt-label {
-		border-right: 2px solid #0b0b0b;
-	}
-
-	.crt-switch .pos {
-		opacity: 0.55;
-	}
-
-	.crt-switch .pos.active {
-		background: #f1f1f1;
-		color: #0a0a0a;
-		font-weight: 400;
-		opacity: 1;
-	}
-
-	:global(html[data-crt='on']) .crt-switch .pos.active {
-		background: #33ff00;
-		box-shadow: 0 0 8px rgba(51, 255, 0, 0.6);
-	}
-
-	.crt-switch:focus-visible {
-		outline: 2px solid #33ff00;
-		outline-offset: 4px;
 	}
 
 	/* Controls on the machine half: phosphor on black, inverted when pressed. */
@@ -586,6 +626,16 @@
 		position: relative;
 		z-index: 1;
 		padding: 0 20px;
+	}
+
+	/* On a phone the chapter well and the window both inset the text, and the compound
+	   indent pushed the prose down to 32 characters a line. The well keeps a token inset
+	   so the panel still reads; the window supplies the rest. */
+	@media (max-width: 900px) {
+		.reader.crt .prose :global(.chapter .pin),
+		.reader.crt .prose :global(.chapter .chapter-body) {
+			padding: 0 10px;
+		}
 	}
 
 	.reader.crt .prose :global(.chapter .chapter-body) {
@@ -672,11 +722,8 @@
 		pointer-events: none;
 	}
 
-	@media (max-width: 700px) {
-		.lesson-content.crt {
-			padding-inline: 6vw;
-		}
-	}
+	/* No narrow-screen override: a fixed vw padding here would fall back inside the aperture
+	   on phones, which is exactly the clipping the recessed frame causes. */
 
 	/* The trap: a hazard label, thick amber on both palettes. */
 	.prose :global(.trap) {
@@ -731,9 +778,11 @@
 		padding-left: 24px;
 	}
 
-	/* The back link lives in the fixed header, so the page starts below it. */
+	/* `.window-content` already supplies the padding, so the reader must not add a second
+	   inset on top of it: doing both cost ~110px of measure at 1440px and left the prose at
+	   42 characters a line, below the 45–75ch reading range. */
 	.reader {
-		padding: 80px clamp(24px, 5vw, 72px) 16px;
+		padding: 0 0 16px;
 	}
 
 	.sheet {
@@ -1168,13 +1217,13 @@
 	   The syntax variables are re-declared here, on the block itself, which is why the
 	   tones below pick them up in light mode where `:root` still carries the paper set. */
 	.prose :global(pre) {
-		--code-ink: #f1f1f1;
-		--syntax-keyword: #f1f1f1;
-		--syntax-function: #f1f1f1;
+		--code-ink: #e0ffe0;
+		--syntax-keyword: #e0ffe0;
+		--syntax-function: #e0ffe0;
 		--syntax-builtin: #40f51a;
 		--syntax-number: #40f51a;
-		--syntax-string: #a3a2a7;
-		--syntax-comment: #777777;
+		--syntax-string: #a8e8a8;
+		--syntax-comment: #7fbf7f;
 		margin: 0 0 10px;
 		padding: 1.5rem;
 		overflow-x: auto;
@@ -1188,6 +1237,19 @@
 	.prose :global(li code),
 	.prose :global(td code) {
 		overflow-wrap: anywhere;
+	}
+
+	/* The prediction panel is a printout in both themes — its token colours are the
+	   on-black palette — but it takes its surface from `--color-ink` and its bare text from
+	   `--color-paper`, and the machine palette inverts both. Pinning the panel back to
+	   phosphor-on-black inside the window is what makes it readable. */
+	.reader.crt .prose :global(.predict .snippet) {
+		background: #000000;
+		color: #e0ffe0;
+	}
+
+	.reader.crt .prose :global(.predict .snippet .snippet-code) {
+		color: #e0ffe0 !important;
 	}
 
 	.prose :global(pre code) {
@@ -1441,6 +1503,26 @@
 		text-underline-offset: 0.25em;
 	}
 
+	/* The recessed frame leaves far less room inside the tube than the window suggests, so the
+	   pager's 350px first column stops fitting beside the second one well before 700px. */
+	@media (max-width: 900px) {
+		.pager {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.pager .cell:first-child {
+			padding-right: 0;
+		}
+
+		.pager .right {
+			justify-items: start;
+			padding-left: 0;
+			border-top: 1px solid color-mix(in srgb, var(--color-ink) 15%, transparent);
+			border-left: 0;
+			text-align: left;
+		}
+	}
+
 	@media (max-width: 700px) {
 		.hero {
 			min-height: 42svh;
@@ -1461,6 +1543,18 @@
 			flex-direction: column;
 			align-items: flex-start;
 			gap: 1.6rem;
+		}
+
+		/* The sign-off switch is set in the pixel face, which is far wider per character than
+		   the mono face; at phone widths its own padding would push it under the moulding. */
+		.signoff-act,
+		.complete {
+			max-width: 100%;
+		}
+
+		.complete {
+			padding: 1.2rem clamp(0.6rem, 3vw, 2rem);
+			font-size: 1.4rem;
 		}
 
 		.pager {
