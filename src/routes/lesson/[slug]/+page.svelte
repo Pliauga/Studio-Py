@@ -68,16 +68,6 @@
 		maximized = !maximized;
 	}
 
-	// A maximised window owns the whole viewport, including the strip the fixed site header
-	// floats over. Without this the header would sit on the title bar and cover the lights.
-	$effect(() => {
-		if (maximized) document.documentElement.dataset.osMaximized = 'on';
-		else delete document.documentElement.dataset.osMaximized;
-		return () => {
-			delete document.documentElement.dataset.osMaximized;
-		};
-	});
-
 	const traffic = [
 		{ tone: 'red', mark: '×', label: 'Close window', act: closeWindow },
 		{ tone: 'yellow', mark: '-', label: 'Minimise window', act: minimizeWindow },
@@ -136,7 +126,7 @@
 			<span class="window-name">{filename}</span>
 			<a class="window-close" href="/dashboard">[ CLOSE ]</a>
 		</div>
-		<div class="window-content" bind:this={scroller}>
+		<div class="window-content" data-mac-scroll bind:this={scroller}>
 			<main class="reader crt">
 				<div class="sheet">
 		<RegistrationMarks />
@@ -212,30 +202,35 @@
 </div>
 
 <style>
-	/* A maximised window is the only thing on screen, so the site header steps out of the
-	   way rather than floating over the title bar. */
-	:global(html[data-os-maximized='on']) :global(.site-head),
-	:global(html[data-os-maximized='on']) :global(.progress) {
-		visibility: hidden;
-	}
+	/* ---- The 8-bit skin ---------------------------------------------------------------
+	   The desktop keeps its macOS layout; only the window's interior wears the skin. Soft
+	   CRT bloom is gone in favour of hard pixel shadows, Alabaster paper, stepped Aqua gel
+	   bars and a black line around everything that used to glow. */
 
-	/* ---- The machine half ------------------------------------------------------------
-	   The mode is a switch on <html>, so the header, body paper, editor and sandbox all
-	   read the same palette. ON is a 1970s mainframe terminal; OFF is the printed page. */
+	/* 1. Palette: Aqua Pinstripe + Alabaster Paper + 8-Bit Ink */
 	:global(:root[data-crt='on'][data-theme]) {
-		color-scheme: dark;
-		--color-paper: #0a0a0a;
-		--color-ink: #e0e0e0;
-		--color-tertiary: #a8a8a8;
-		--color-muted: var(--color-tertiary);
-		--color-line-faint: rgba(224, 224, 224, 0.16);
-		--code-inline-bg: #1c1c1c;
-		--syntax-keyword: #e0e0e0;
+		color-scheme: light;
+		--color-paper: #f8f7f2;
+		--color-ink: #000000;
+		--color-tertiary: #3a4150;
+		--color-muted: #4a5260;
+		--color-line-faint: rgba(0, 0, 0, 0.18);
+		--code-inline-bg: #dcebff;
+
+		/* The window is still a terminal, so its reading face stays monospaced even
+		   though the paper under it is now light. */
+		--font-body: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
+		--font-mono: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
+
+		/* Keep CodeMirror & static <pre> blocks in high-contrast 8-bit dark mode */
+		--editor-surface: #0a0e17;
+		--editor-ink: #f1f1f1;
+		--syntax-keyword: #ffb000;
 		--syntax-builtin: #33ff00;
-		--syntax-string: #a8a8a8;
-		--syntax-function: #e0e0e0;
+		--syntax-string: #66c2ff;
+		--syntax-function: #f1f1f1;
 		--syntax-number: #33ff00;
-		--syntax-comment: #777777;
+		--syntax-comment: #6c7a89;
 	}
 
 	:global(:root[data-crt='off'][data-theme]) {
@@ -255,26 +250,15 @@
 	}
 
 	/* ---- The desktop ------------------------------------------------------------------
-	   The lesson is an application floating over the OS desktop: a yellow work surface with
-	   a faint cutting-mat grid, and the terminal window resting on it. The desktop is its
-	   own scroll box so the window can be a fixed-height pane with an internal scroll of
-	   its own — the chrome never leaves the viewport while the lesson is read. */
+	   The lesson is an application floating over the OS desktop. The desktop itself — the
+	   yellow, the grid, the menu bar and the dock — belongs to the layout and never
+	   unmounts, so this route is only the window that sits on it. */
 	.desktop {
-		position: relative;
-		min-height: 100svh;
-		/* The site header is fixed and a sibling of this page, so the work surface has to
-		   start below it or the window's title bar slides underneath the chrome. */
-		padding: calc(var(--head-h) + clamp(16px, 3vw, 40px)) clamp(16px, 3vw, 40px)
-			clamp(16px, 3vw, 40px);
-		background-color: #f4e05e;
-		background-image:
-			linear-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px),
-			linear-gradient(90deg, rgba(0, 0, 0, 0.08) 1px, transparent 1px);
-		background-size: 20px 20px;
+		position: absolute;
+		inset: 0;
 	}
 
-	/* Scanlines belong to the window's screen, not the desktop: the raster is clipped to the
-	   terminal so the yellow work surface stays clean. */
+	/* The raster belongs to the window's screen, not the desktop. */
 	.crt-scan {
 		position: absolute;
 		inset: 0;
@@ -289,53 +273,64 @@
 		pointer-events: none;
 	}
 
+	/* 2. Replaces CRT scanlines with subtle Mac OS Aqua horizontal pinstripes. */
 	.crt-scan.on {
-		opacity: 1;
-		animation: scan-drift 6s linear infinite;
+		opacity: 0.35;
+		animation: none;
+		background: repeating-linear-gradient(
+			0deg,
+			transparent 0 2px,
+			rgba(0, 51, 153, 0.04) 2px 4px
+		);
 	}
 
-	@keyframes scan-drift {
-		to {
-			background-position: 0 8px;
-		}
-	}
-
-	/* The application window: a hard frame with a heavy offset shadow, sized to the
-	   viewport so it reads as a window and not as another page. */
+	/* The application window: a real macOS frame floating on the desktop. The chrome is
+	   Aqua; only the interior wears the 8-bit skin. */
 	.os-window {
-		position: relative;
+		position: absolute;
+		top: 5vh;
+		left: 50%;
+		z-index: 3;
 		display: flex;
 		flex-direction: column;
-		width: 100%;
-		max-width: 1200px;
-		height: calc(100svh - var(--head-h) - clamp(32px, 6vw, 80px));
-		min-height: 420px;
-		margin: 0 auto;
-		border: 2px solid #000;
-		background: #02100a;
-		box-shadow: 15px 15px 0 rgba(0, 0, 0, 0.8);
+		box-sizing: border-box;
+		width: 1200px;
+		max-width: 92vw;
+		height: calc(100% - var(--mac-dock-gutter) - 5vh);
+		border-radius: 12px;
 		overflow: hidden;
+		background: #1a1a1a;
+		/* A hairline edge plus a deep soft drop: the window sits above the desktop
+		   rather than being drawn onto it. */
+		box-shadow: var(--mac-window-shadow);
+		transform: translateX(-50%);
+		/* A window that is maximised or minimised leaves its frame behind a transform,
+		   so the move is animated rather than snapped. */
+		transition:
+			width var(--duration-3) var(--ease-standard),
+			height var(--duration-3) var(--ease-standard),
+			top var(--duration-3) var(--ease-standard),
+			left var(--duration-3) var(--ease-standard),
+			border-radius var(--duration-3) var(--ease-standard),
+			transform var(--duration-3) var(--ease-standard);
 	}
 
-	/* The title bar: traffic lights on the left, the file name centred, close on the right.
-	   The name is absolutely centred so the two side groups can size independently. */
+	/* The title bar: traffic lights on the left, the file name centred. Aqua is a light
+	   glassy gradient, not a flat fill, and the hairline keeps the edge crisp at any zoom. */
 	.title-bar {
 		position: relative;
-		/* Above the scanline raster: the CRT belongs to the screen below the chrome. */
+		/* Above the raster: the screen belongs below the chrome. */
 		z-index: 3;
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
+		gap: 12px;
 		flex: none;
-		padding: 8px 16px;
-		border-bottom: 2px solid #000;
-		background: #e0e0e0;
-		color: #000;
-		font-family: var(--font-terminal);
-		font-weight: bold;
-		font-size: clamp(0.8rem, 1.5vw, 1rem);
-		line-height: 1.2;
+		height: 38px;
+		padding: 0 14px;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+		background: var(--mac-aqua);
+		color: var(--mac-aqua-ink);
+		font-family: var(--mac-ui);
 		user-select: none;
 	}
 
@@ -347,114 +342,113 @@
 	}
 
 	/* The lights are buttons, so they take the default form chrome off and keep the
-	   circle: hit area is the disc itself, padded to a comfortable 18px. */
+	   circle: the disc is the hit area. The glyph is an affordance that appears on hover,
+	   the way a managed window behaves. */
 	.light {
 		position: relative;
 		display: grid;
 		place-items: center;
-		width: 18px;
-		height: 18px;
+		width: 12px;
+		height: 12px;
 		padding: 0;
 		border: 0;
 		border-radius: 50%;
-		background: none;
+		box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.35);
 		cursor: pointer;
 	}
 
-	/* The disc itself, drawn by the pseudo-element so the button can be larger than the
-	   dot without the dot growing with it. */
-	.light::before {
-		content: '';
-		width: 12px;
-		height: 12px;
-		border: 1px solid rgba(0, 0, 0, 0.55);
-		border-radius: 50%;
-	}
-
-	/* The mark only appears on hover, the way a managed window behaves: the dots are the
-	   chrome, the marks are the affordance. */
 	.light .mark {
 		position: absolute;
 		inset: 0;
 		display: grid;
 		place-items: center;
-		font-family: var(--font-terminal);
-		font-size: 11px;
+		font-family: var(--mac-ui);
+		font-size: 9px;
 		font-weight: 700;
 		line-height: 1;
-		color: rgba(0, 0, 0, 0.72);
+		color: rgba(0, 0, 0, 0.6);
 		opacity: 0;
 		pointer-events: none;
 	}
 
-	.light:hover .mark,
+	.traffic:hover .mark,
 	.light:focus-visible .mark {
 		opacity: 1;
 	}
 
 	.light:focus-visible {
-		outline: 2px solid #000;
+		outline: 2px solid var(--mac-blue);
 		outline-offset: 2px;
 	}
 
-	.light.red::before {
+	.light.red {
 		background: #ff5f57;
 	}
 
-	.light.yellow::before {
+	.light.yellow {
 		background: #febc2e;
 	}
 
-	.light.green::before {
+	.light.green {
 		background: #28c840;
 	}
 
-	/* Maximised, the window is the desktop: no frame, no offset shadow, no inset. */
+	/* Maximised, the window fills the screen below the menu bar. The route surface
+	   already begins there, so it takes the whole box — the dock stays visible because
+	   a maximised app has not taken the desktop over. */
 	.os-window.maximized {
-		width: 100vw;
-		height: 100vh;
-		max-width: 100vw;
-		border-radius: 0;
-		border: none;
-		box-shadow: none;
 		top: 0;
 		left: 0;
+		width: 100vw;
+		height: 100%;
+		max-width: 100vw;
+		border-radius: 0;
+		box-shadow: none;
 		transform: none;
-	}
-
-	/* The work surface gives up its padding and its grid when the window is maximised, so
-	   the window's 100vh is the real viewport rather than the area inside the mat. */
-	.desktop.maximized {
-		padding: 0;
-		background-image: none;
 	}
 
 	.window-name {
 		position: absolute;
 		left: 50%;
-		transform: translateX(-50%);
 		max-width: calc(100% - 15rem);
 		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
-		letter-spacing: 0.02em;
+		font-family: var(--mac-ui);
+		font-size: 13px;
+		font-weight: 600;
+		line-height: 1;
+		letter-spacing: -0.01em;
+		transform: translateX(-50%);
 	}
 
+	/* The right-hand slot balances the traffic lights so the name stays centred: it is
+	   the window's own close affordance, not a second set of lights. */
 	.window-close {
 		flex: none;
-		color: #000;
+		margin-left: auto;
+		padding: 3px 8px;
+		border-radius: 5px;
+		color: var(--mac-aqua-ink);
 		text-decoration: none;
-		letter-spacing: 0.02em;
+		font-family: var(--mac-ui);
+		font-size: 11px;
+		font-weight: 500;
+		letter-spacing: 0.01em;
 	}
 
 	.window-close:hover,
 	.window-close:focus-visible {
-		background: #000;
-		color: #e0e0e0;
+		background: rgba(0, 0, 0, 0.1);
+	}
+
+	.window-close:focus-visible {
+		outline: 2px solid var(--mac-blue);
+		outline-offset: 1px;
 	}
 
 	/* The pane the lesson scrolls inside. `overscroll-behavior` keeps the wheel from
-	   chaining out to the document once the lesson hits its end. */
+	   chaining out to the desktop once the lesson hits its end. */
 	.window-content {
 		flex: 1;
 		min-height: 0;
@@ -464,87 +458,59 @@
 	}
 
 	@media (max-width: 900px) {
+		/* Under 900px the window keeps its frame but reclaims the vertical breathing room,
+		   so a phone does not spend a fifth of the screen on empty desktop. */
 		.os-window {
-			height: auto;
-			min-height: 0;
-			box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.8);
+			height: calc(100% - var(--mac-dock-gutter));
+			top: 0;
 		}
 
-		/* Under 900px the window grows with its content and the page itself scrolls; a
-		   fixed-height pane would strand the reader in a two-line viewport. */
 		.window-content {
-			overflow: visible;
 			padding: 1.1rem 0.6rem;
 		}
 
 		.window-name {
 			max-width: calc(100% - 11rem);
-			font-size: 0.78rem;
+			font-size: 11.5px;
 		}
 	}
 
-	/* ---- The phosphor ----------------------------------------------------------------
-	   Bloom and fringing belong to headers and controls. Reading text and code stay
-	   still, soft and unglowing so a lesson can be read for fifteen minutes. */
-	:global(:root[data-crt='on'][data-theme]) {
-		--font-body: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
-		--font-mono: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
-		--editor-surface: #051a05;
-		--editor-ink: #e0ffe0;
-		--syntax-keyword: #e0ffe0;
-		--syntax-function: #e0ffe0;
-		--syntax-string: #9be89b;
-		--syntax-comment: #5f9a5f;
+	@media (prefers-reduced-motion: reduce) {
+		.os-window {
+			transition: none;
+		}
 	}
 
-	/* Reading text and code: pale phosphor white, a tight crisp glow, no bloom, no fringing.
-	   Pure green is kept for headers, frames and bloom. */
+	/* ---- The machine half, re-skinned ------------------------------------------------
+	   Reading text and code stay still and dark on paper; the hard pixel shadows belong to
+	   headers and frames. */
+
+	/* 5. Kill blurry CRT bloom; use crisp 8-bit hard pixel shadows. */
 	.reader.crt .prose {
-		color: #e0ffe0;
-		line-height: 1.55;
-		text-shadow: 0 0 2px rgba(51, 255, 0, 0.4);
+		color: #111318;
+		line-height: 1.6;
+		text-shadow: none;
 	}
 
-	/* Headers: solid phosphor green under a layered halo. The bloom is a stack of shadows
-	   rather than one blurred duplicate, so every heading gets it — including the MDX `h2`s
-	   and `h3`s, which carry no `data-text` attribute to copy. */
 	.reader.crt h1,
 	.reader.crt .prose :global(h2),
 	.reader.crt .prose :global(h3) {
-		position: relative;
-		isolation: isolate;
-		z-index: 1;
 		font-family: var(--font-pixel);
 		font-weight: 400;
 		letter-spacing: 0;
-		color: #33ff00;
-		text-shadow:
-			0 0 4px rgba(51, 255, 0, 0.9),
-			0 0 10px rgba(51, 255, 0, 0.75),
-			0 0 22px rgba(51, 255, 0, 0.5),
-			0 0 44px rgba(51, 255, 0, 0.28);
-	}
-
-	/* The h1 alone also gets a wide blurred copy behind it, so the title bleeds light
-	   without softening its own glyphs. */
-	.reader.crt h1::after {
-		content: attr(data-text);
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		z-index: -1;
-		color: #00ff00;
-		filter: blur(12px);
-		opacity: 0.85;
-		mix-blend-mode: screen;
-		pointer-events: none;
-		user-select: none;
+		color: #000000;
+		text-shadow: 3px 3px 0px #0066ff; /* Hard Aqua blue pixel offset shadow */
 	}
 
 	.reader.crt h1 {
 		font-size: calc(var(--display) * 1.3);
 		line-height: 0.85;
+		color: #000000;
+		text-shadow: 4px 4px 0px #33ff00; /* Hero title gets phosphor green hard shadow */
+	}
+
+	.reader.crt h1::after {
+		display: none; /* Remove blur(12px) duplicate */
 	}
 
 	.reader.crt .prose :global(h2) {
@@ -561,64 +527,55 @@
 		letter-spacing: 0.1em;
 	}
 
-	/* Controls on the machine half: phosphor on black, inverted when pressed. */
+	/* Controls: 8-bit buttons, pressed by inverting to ink on green. */
 	.reader.crt .complete {
-		border: 2px solid #33ff00;
-		background: transparent;
+		border: 2px solid #000000;
+		background: #f1f1f1;
 		font-family: var(--font-pixel);
 		font-size: 1.7rem;
-		color: #33ff00;
-		text-shadow:
-			0 0 5px rgba(51, 255, 0, 0.9),
-			0 0 15px rgba(51, 255, 0, 0.6),
-			0 0 30px rgba(51, 255, 0, 0.3);
+		color: #000000;
+		text-shadow: none;
+		box-shadow: 4px 4px 0px #000000;
 	}
 
 	.reader.crt .complete:hover,
 	.reader.crt .complete:focus-visible,
 	.reader.crt .complete.on {
 		background: #33ff00;
-		color: #0a0a0a;
+		color: #000000;
 		text-shadow: none;
 	}
 
 	.reader.crt .complete.on:hover,
 	.reader.crt .complete.on:focus-visible {
-		background: transparent;
-		color: #33ff00;
-		text-shadow:
-			0 0 5px rgba(51, 255, 0, 0.9),
-			0 0 15px rgba(51, 255, 0, 0.6),
-			0 0 30px rgba(51, 255, 0, 0.3);
+		background: #f1f1f1;
+		color: #000000;
+		text-shadow: none;
 	}
 
 	.reader.crt .pager .dir {
-		color: #33ff00;
-		text-shadow:
-			0 0 5px rgba(51, 255, 0, 0.9),
-			0 0 15px rgba(51, 255, 0, 0.6),
-			0 0 30px rgba(51, 255, 0, 0.3);
+		color: #000000;
+		text-shadow: 2px 2px 0px #66c2ff;
 	}
 
-	/* The instrument panel: no keylines. Each sub-system is a dark well sunk into the glass,
-	   edged by a molded-plastic outline and divided from its neighbour by a gutter. The
-	   narrative well is a grid-spanning layer behind the heading and the body. */
+	/* The instrument panel: each sub-system is an Alabaster card edged in ink and lifted
+	   by a hard shadow. */
 	.reader.crt .prose :global(.chapter.split) {
 		column-gap: 2rem;
 	}
 
+	/* 6. Chapter cards: Alabaster paper. */
 	.reader.crt .prose :global(.chapter)::before {
 		content: '';
 		grid-area: 1 / 1 / 3 / 2;
 		align-self: stretch;
 		justify-self: stretch;
 		z-index: 0;
-		background: #030a03;
-		outline: 2px solid #0a150a;
-		border-radius: 8px;
-		box-shadow:
-			inset 0 4px 15px rgba(0, 0, 0, 0.9),
-			inset 0 0 2px rgba(0, 0, 0, 1);
+		background: #f8f7f2;
+		outline: none;
+		border: 2px solid #000000;
+		border-radius: 0;
+		box-shadow: 4px 4px 0px #000000;
 	}
 
 	.reader.crt .prose :global(.chapter .pin),
@@ -653,26 +610,47 @@
 		margin-top: 0;
 		padding: 0 20px 20px;
 		overflow-y: auto;
-		background: #030a03;
-		outline: 2px solid #0a150a;
-		border-radius: 8px;
-		box-shadow:
-			inset 0 4px 15px rgba(0, 0, 0, 0.9),
-			inset 0 0 2px rgba(0, 0, 0, 1);
+		background: repeating-linear-gradient(
+			0deg,
+			#f4f6f9 0px,
+			#f4f6f9 2px,
+			#e6eaf0 2px,
+			#e6eaf0 4px
+		);
+		outline: none;
+		border: 2px solid #000000;
+		border-radius: 0;
+		box-shadow: 4px 4px 0px #000000;
 	}
 
+	/* Stepped 8-bit Aqua blue gel header bars for SYSTEM.LOG. The content literal, the
+	   margins and the type are the panel's own; only the finish is new. */
 	.reader.crt .prose :global(.chapter .pin)::before,
 	.reader.crt .prose :global(.chapter .console-slot)::before {
 		content: '> SYSTEM.LOG: NARRATIVE';
 		display: block;
 		margin: 0 -20px 20px;
 		padding: 0.35rem 20px;
-		border-radius: 8px 8px 0 0;
-		background: rgba(51, 255, 0, 0.08);
 		font-family: var(--font-pixel);
 		font-size: 1.25rem;
 		line-height: 1.2;
 		letter-spacing: 0.1em;
+
+		border-radius: 0;
+		border-bottom: 2px solid #000000;
+		background: linear-gradient(
+			180deg,
+			#ffffff 0%,
+			#ffffff 14%,
+			#66c2ff 14%,
+			#66c2ff 30%,
+			#0066ff 30%,
+			#0066ff 82%,
+			#0044aa 82%,
+			#0044aa 100%
+		);
+		color: #ffffff;
+		text-shadow: 1px 1px 0px #000000;
 	}
 
 	.reader.crt .prose :global(.chapter .console-slot)::before {
@@ -682,7 +660,6 @@
 		z-index: 5;
 		flex: 0 0 auto;
 		margin-bottom: 0;
-		background: #0a1f0a;
 	}
 
 	.reader.crt .prose :global(.chapter .console-slot.telemetry)::before {
@@ -694,22 +671,20 @@
 	}
 
 	.reader.crt .prose :global(.console-slot .scene-col) {
-		background: #030a03;
+		background: #0a0e17;
 	}
 
 	.reader.crt .prose :global(.chapter .spine) {
 		display: none;
 	}
 
-	/* The console and editor are recessed into the screen: a dark well inside, a phosphor
-	   ring outside. The well is drawn on an overlay because the editor and canvas paint
-	   their own backgrounds over an inset shadow on the box. */
+	/* 7. Recessed dark 8-bit code editor well inside the Aqua card. */
 	.reader.crt .prose :global(.editor-wrapper),
 	.reader.crt .prose :global(.console-slot .sandbox-embed .frame) {
 		position: relative;
-		border: 0;
-		background: #051a05;
-		box-shadow: 0 0 0 2px #33ff00;
+		background: #0a0e17;
+		border: 2px solid #000000;
+		box-shadow: 4px 4px 0px #000000;
 	}
 
 	.reader.crt .prose :global(.editor-wrapper)::after,
@@ -718,20 +693,21 @@
 		position: absolute;
 		inset: 0;
 		z-index: 3;
-		box-shadow: inset 0 4px 15px rgba(0, 0, 0, 0.9);
+		box-shadow: inset 3px 3px 0px rgba(0, 0, 0, 0.85);
 		pointer-events: none;
 	}
 
 	/* No narrow-screen override: a fixed vw padding here would fall back inside the aperture
 	   on phones, which is exactly the clipping the recessed frame causes. */
 
-	/* The trap: a hazard label, thick amber on both palettes. */
+	/* 8. Brutalist system warning / trap box. */
 	.prose :global(.trap) {
 		max-width: 100ch;
 		margin: 28px 0 16px;
-		border: 4px solid #ffb000;
+		border: 2px solid #000000;
 		border-top: 0;
-		background: rgba(255, 176, 0, 0.05);
+		background: #fff8e6;
+		box-shadow: 4px 4px 0px #000000;
 	}
 
 	/* Black and amber hazard stripe on the top edge only; the body stays a plain tint. */
@@ -739,27 +715,24 @@
 		content: '';
 		display: block;
 		height: 6px;
-		margin: 0 -4px;
+		margin: 0 -2px;
 		background: repeating-linear-gradient(135deg, #ffb000 0 10px, #0a0a0a 10px 20px);
 	}
 
-	/* Copy inside the box is pure white on the dark screen (WCAG AA); the amber border and
-	   tint carry the warning. On the ivory print page white would vanish, so it is ink. */
 	:global(html[data-crt='on']) .prose :global(.trap) {
-		color: #ffffff;
+		color: #000000;
 	}
 
 	.prose :global(.trap .trap-head) {
 		margin: 0;
 		padding: 0.6rem 1.2rem;
-		border-bottom: 4px solid #ffb000;
-		font-family: var(--font-mono);
-		font-size: 1.2rem;
 		font-weight: 700;
 		line-height: 1.6;
-		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		color: inherit;
+
+		border-bottom: 2px solid #000000;
+		background: #ffb000;
+		color: #000000;
 	}
 
 	.prose :global(.trap h3),
@@ -1211,24 +1184,25 @@
 	/* A long line scrolls inside the block, never the page: `pre-wrap` would
 	   destroy Python indentation, so the block keeps its own `overflow-x`.
 
-	   A static block is a terminal printout stamped onto the page, in BOTH themes: the
-	   surface is the machine's black and the token tones are the ones the live editor
-	   uses on black, so light mode gets the same vibrant syntax rather than ink on paper.
-	   The syntax variables are re-declared here, on the block itself, which is why the
-	   tones below pick them up in light mode where `:root` still carries the paper set. */
+	   A static block is a terminal printout stamped onto the 8-bit page, in BOTH themes:
+	   the surface is the editor well's `#0a0e17` and the token tones are the ones the
+	   live editor uses there, so the printed block and the live one read as the same
+	   machine. The syntax variables are re-declared here, on the block itself, which is
+	   why the tones below pick them up where `:root` still carries the paper set. */
 	.prose :global(pre) {
-		--code-ink: #e0ffe0;
-		--syntax-keyword: #e0ffe0;
-		--syntax-function: #e0ffe0;
-		--syntax-builtin: #40f51a;
-		--syntax-number: #40f51a;
-		--syntax-string: #a8e8a8;
-		--syntax-comment: #7fbf7f;
+		--code-ink: #f1f1f1;
+		--syntax-keyword: #ffb000;
+		--syntax-function: #f1f1f1;
+		--syntax-builtin: #33ff00;
+		--syntax-number: #33ff00;
+		--syntax-string: #66c2ff;
+		--syntax-comment: #6c7a89;
 		margin: 0 0 10px;
 		padding: 1.5rem;
 		overflow-x: auto;
-		border: 1px solid var(--color-ink);
-		background: #000000;
+		border: 2px solid #000000;
+		background: #0a0e17;
+		box-shadow: 4px 4px 0px #000000;
 		color: var(--code-ink);
 		line-height: 1.7;
 	}
@@ -1241,15 +1215,15 @@
 
 	/* The prediction panel is a printout in both themes — its token colours are the
 	   on-black palette — but it takes its surface from `--color-ink` and its bare text from
-	   `--color-paper`, and the machine palette inverts both. Pinning the panel back to
-	   phosphor-on-black inside the window is what makes it readable. */
+	   `--color-paper`, which the palette now sets to alabaster. Pinning the panel back to
+	   the editor well's surface and ink inside the window is what makes it readable. */
 	.reader.crt .prose :global(.predict .snippet) {
-		background: #000000;
-		color: #e0ffe0;
+		background: #0a0e17;
+		color: #f1f1f1;
 	}
 
 	.reader.crt .prose :global(.predict .snippet .snippet-code) {
-		color: #e0ffe0 !important;
+		color: #f1f1f1 !important;
 	}
 
 	.prose :global(pre code) {

@@ -6,6 +6,8 @@
 	import '../app.css';
 	import favicon from '#lib/assets/favicon.svg';
 	import { readEase, readMs } from '#lib/motion/timing.ts';
+	import { MODULES } from '#lib/content/lessons.ts';
+	import { openWindows } from '#lib/stores/os.svelte.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -55,8 +57,39 @@
 	function syncThemeColor(next: Theme): void {
 		document
 			.querySelector('meta[name="theme-color"]')
-			?.setAttribute('content', next === 'dark' ? '#000000' : '#f1f1f1');
+			?.setAttribute('content', next === 'dark' ? '#000000' : '#f4e05e');
 	}
+
+	// The menu bar clock is the machine's, not the page's: client-only, because the
+	// server cannot know the reader's timezone and a guessed value would flash wrong.
+	let clock = $state('');
+	let moment = $state<Date | null>(null);
+
+	onMount(() => {
+		const tick = () => {
+			const now = new Date();
+			moment = now;
+			clock = now.toLocaleTimeString('en-GB', {
+				hour: '2-digit',
+				minute: '2-digit',
+				second: '2-digit',
+				hour12: false
+			});
+		};
+		tick();
+		const id = window.setInterval(tick, 1000);
+		return () => window.clearInterval(id);
+	});
+
+	const weekdayAndDate = $derived(
+		moment
+			? moment.toLocaleDateString('en-GB', {
+					weekday: 'short',
+					day: 'numeric',
+					month: 'short'
+				})
+			: ''
+	);
 
 	/** The portal reads the motion tokens from app.css, so the site has one clock. */
 	function portalTiming() {
@@ -98,6 +131,8 @@
 
 	/** Holds the route until the shutter has actually closed, so the plate opens over the
 	 *  card the visitor clicked instead of being starved by the next route's render. */
+	let portalStart = $state<DOMRect | null>(null);
+
 	function recallCard(event: MouseEvent): void {
 		const target = event.target instanceof Element ? event.target.closest('[data-portal]') : null;
 		if (!(target instanceof HTMLAnchorElement)) return;
@@ -111,6 +146,7 @@
 			return;
 		}
 		event.preventDefault();
+		portalStart = target.getBoundingClientRect();
 		void travel(target, href);
 	}
 
@@ -136,27 +172,15 @@
 			shutter.style.transform = '';
 		}
 		if (leavesEl) leavesEl.style.display = '';
-		for (const leaf of [topLeaf, bottomLeaf]) {
-			if (leaf) leaf.style.transform = '';
-		}
-		for (const copy of [topCopy, bottomCopy]) {
-			if (copy) copy.style.opacity = '';
-		}
-		portalStep = 'idle';
 	}
 
-	/** Floods an ink plate from the card rect. The plate is a solid layer scaled from
-	 *  the card, so it composites instead of repainting; the type is revealed only
-	 *  after the plate is full, when there is nothing left to distort. */
-	function openPortal(card: HTMLElement): Promise<void> | null {
+	function openPortal(card: HTMLElement): Promise<void> {
 		const root = portalRoot;
 		const shutter = shutterEl;
-		if (!root || !shutter) return null;
+		const rect = portalStart ?? card.getBoundingClientRect();
+		if (!root || !shutter) return Promise.resolve();
 
 		const timing = portalTiming();
-		const rect = card.getBoundingClientRect();
-		if (rect.width < 8 || rect.height < 8) return null;
-
 		gather(card);
 		flushSync();
 
@@ -167,7 +191,7 @@
 		shutter.style.transform = start;
 		// Set the display imperatively: Svelte strips CSS it cannot see applied,
 		// so a class added only at runtime would never paint.
-		// The plate covers the head anyway, so the head stands down for the portal's duration.
+		// The plate covers the chrome anyway, so the chrome stands down for the portal.
 		document.documentElement.dataset.portalOpen = 'on';
 		root.style.display = 'block';
 		portalStep = 'opening';
@@ -239,27 +263,6 @@
 		closePortal();
 	});
 
-	let progressBar = $state<HTMLDivElement | null>(null);
-
-	function updateProgress(): void {
-		if (!progressBar) return;
-		const scrollable = document.documentElement.scrollHeight - window.innerHeight;
-		const ratio = scrollable > 0 ? Math.min(1, Math.max(0, window.scrollY / scrollable)) : 0;
-		progressBar.style.transform = `scaleX(${ratio})`;
-	}
-
-	onMount(() => {
-		window.addEventListener('scroll', updateProgress, { passive: true });
-		window.addEventListener('resize', updateProgress);
-		updateProgress();
-		return () => {
-			window.removeEventListener('scroll', updateProgress);
-			window.removeEventListener('resize', updateProgress);
-		};
-	});
-
-	afterNavigate(updateProgress);
-
 	type ViewTransitionDocument = Document & {
 		startViewTransition?: (callback: () => Promise<void> | void) => { finished: Promise<void> };
 	};
@@ -283,7 +286,8 @@
 		});
 	});
 
-	/** Three quick presses on the wordmark open the hidden cabinet; a single press still goes home. */
+	/** Three quick presses on the menu-bar mark open the hidden cabinet; a single press
+	 *  still goes home. */
 	const SNAKE_CLICKS = 3;
 	const SNAKE_WINDOW_MS = 600;
 	let snakeOpen = $state(false);
@@ -314,11 +318,22 @@
 	function toggleTheme(): void {
 		applyTheme(theme === 'dark' ? 'light' : 'dark', true);
 	}
+
+	/** The lesson the dock believes is open, if any: the dock is the window manager. */
+	const lessonOpen = $derived(
+		openWindows.currentLesson
+			? MODULES.find((entry) => entry.slug === openWindows.currentLesson)
+			: undefined
+	);
+
+	const onDashboard = $derived(page.url.pathname.startsWith('/dashboard'));
+	const onLanding = $derived(page.url.pathname === '/');
+	const onLesson = $derived(page.url.pathname.startsWith('/lesson/'));
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<meta name="theme-color" content="#f1f1f1" />
+	<meta name="theme-color" content="#f4e05e" />
 	<!-- Cross-document moves (a reload, a shared link) animate with the same CSS the
 	     client-side moves below are wrapped in. -->
 	<style>
@@ -328,32 +343,102 @@
 	</style>
 </svelte:head>
 
-<header class="site-head">
-	<a class="wordmark" href="/" onclick={pressWordmark}>Studio Py</a>
-	{#if page.url.pathname.startsWith('/lesson/')}
-		<a class="back" href="/dashboard">← Index</a>
-	{:else if page.url.pathname === '/'}
-		<a class="back" href="/dashboard">-- INDEX</a>
-	{/if}
-	<button
-		class="mode"
-		type="button"
-		onclick={toggleTheme}
-		aria-pressed={theme === 'dark'}
-	>
-		<span class="box" aria-hidden="true"></span>
-		Dark
-	</button>
-</header>
+<!--
+	THE DESKTOP
 
-<!-- Sibling of the header and `.page`, so the page fade never touches it. -->
-<div class="progress" aria-hidden="true"><div class="progress-fill" bind:this={progressBar}></div></div>
+	One continuous Aqua work surface. The grid and the yellow are the desktop; the
+	menu bar is pinned to its top edge and the dock to its bottom edge. Both are
+	siblings of the route content, so neither remounts when a route changes — a
+	window opening over the desktop never takes the desktop with it.
+-->
+<div class="mac-desktop">
+	<div class="desktop-grid" aria-hidden="true"></div>
 
-{#key page.url.pathname}
-	<div class="page" class:routed inert={snakeOpen} style="view-transition-name: page-transition;">
-		{@render children()}
-	</div>
-{/key}
+	<header class="mac-menubar">
+		<a class="menubar-mark" href="/" onclick={pressWordmark} aria-label="Studio Py — go to the README">
+			🐍
+		</a>
+		<span class="menubar-app">Studio Py</span>
+
+		<nav class="menubar-menus" aria-label="Application menus">
+			<a class="menubar-item" href="/">File</a>
+			<a class="menubar-item" href="/dashboard">Edit</a>
+			<a class="menubar-item" href="/dashboard">Incident</a>
+			<span class="menubar-item is-static" aria-hidden="true">View</span>
+			<span class="menubar-item is-static" aria-hidden="true">Help</span>
+		</nav>
+
+		<div class="menubar-status">
+			<button
+				class="menubar-item theme-toggle"
+				type="button"
+				onclick={toggleTheme}
+				aria-pressed={theme === 'dark'}
+				aria-label="Toggle dark mode"
+			>
+				<span class="toggle-dot" aria-hidden="true"></span>
+				{theme === 'dark' ? 'Dark' : 'Light'}
+			</button>
+			<span class="menubar-clock">
+				{#if weekdayAndDate}<span class="menubar-date">{weekdayAndDate}</span>{/if}
+				<span class="menubar-time">{clock || '--:--:--'}</span>
+			</span>
+		</div>
+	</header>
+
+	{#key page.url.pathname}
+		<div
+			class="page desktop-page"
+			class:routed
+			inert={snakeOpen}
+			style="view-transition-name: page-transition;"
+		>
+			{@render children()}
+		</div>
+	{/key}
+
+	<!-- The dock: the desktop's own window manager. The folder is the index, the
+	     terminal is the lesson the reader has open. It floats over the work surface
+	     and never unmounts, so a closing window leaves the dock behind. -->
+	<nav class="mac-dock" aria-label="Dock">
+		<a
+			class="dock-icon"
+			class:running={onDashboard}
+			href="/dashboard"
+			aria-label="Dashboard — the module index"
+			title="Dashboard"
+		>
+			<span class="dock-glyph" aria-hidden="true">📁</span>
+			<span class="dock-dot" aria-hidden="true"></span>
+		</a>
+
+		<a
+			class="dock-icon"
+			class:running={onLanding}
+			href="/"
+			aria-label="README — about Studio Py"
+			title="README.md"
+		>
+			<span class="dock-glyph" aria-hidden="true">📄</span>
+			<span class="dock-dot" aria-hidden="true"></span>
+		</a>
+
+		{#if lessonOpen}
+			<span class="dock-divider" aria-hidden="true"></span>
+			<a
+				class="dock-icon"
+				class:running={onLesson}
+				class:minimized={openWindows.isMinimized}
+				href={`/lesson/${lessonOpen.slug}`}
+				aria-label={`Lesson window — ${lessonOpen.title}`}
+				title={lessonOpen.title}
+			>
+				<span class="dock-glyph" aria-hidden="true">💻</span>
+				<span class="dock-dot" aria-hidden="true"></span>
+			</a>
+		{/if}
+	</nav>
+</div>
 
 {#if snakeOpen}
 	<AsciiSnake onclose={() => (snakeOpen = false)} />
@@ -384,139 +469,285 @@
 </div>
 
 <style>
-	:global(html[data-portal-open]) .site-head,
-	:global(html[data-portal-open]) .progress {
+	:global(html[data-portal-open]) .mac-menubar,
+	:global(html[data-portal-open]) .mac-dock {
 		visibility: hidden;
 	}
 
-	/* A structural beam of the grid: solid paper, one ink rule, above everything but the
-	   portal. Content slides under it; nothing shows through. */
-	:global(:root) {
-		--head-h: 64px;
+	/* The cabinet pauses the page: every animation holds, nothing is clickable. */
+	:global(html[data-snake]) .mac-menubar,
+	:global(html[data-snake]) .mac-dock {
+		pointer-events: none;
 	}
 
-	/* The cabinet pauses the page: scroll locks, every animation holds, nothing is clickable. */
-	:global(html[data-snake]) {
-		overflow: hidden;
-	}
-
-	:global(html[data-snake]) .page :global(*),
-	:global(html[data-snake]) .page :global(*::before),
-	:global(html[data-snake]) .page :global(*::after) {
+	:global(html[data-snake]) .desktop-page :global(*),
+	:global(html[data-snake]) .desktop-page :global(*::before),
+	:global(html[data-snake]) .desktop-page :global(*::after) {
 		animation-play-state: paused !important;
 	}
 
-	:global(html[data-snake]) .site-head {
+	/* The desktop itself. It is the viewport: no scroll, no chrome of its own, and
+	   every route draws on top of it rather than replacing it. */
+	.mac-desktop {
+		position: relative;
+		isolation: isolate;
+		display: block;
+		width: 100vw;
+		height: 100vh;
+		overflow: hidden;
+		background: var(--color-desktop);
+	}
+
+	/* The cutting-mat grid: faint enough to read over, regular enough that a window
+	   looks placed on a surface rather than floated in a void. */
+	.desktop-grid {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		background-image:
+			linear-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(0, 0, 0, 0.07) 1px, transparent 1px);
+		background-size: 20px 20px;
 		pointer-events: none;
 	}
 
-	.site-head {
-		position: fixed;
+	/* ---- the menu bar ---------------------------------------------------------------- */
+
+	.mac-menubar {
+		position: absolute;
 		inset: 0 0 auto;
-		z-index: 100;
-		box-sizing: border-box;
+		z-index: 200;
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: clamp(12px, 2vw, 32px);
-		height: var(--head-h);
-		padding: 0 clamp(16px, 4vw, 64px);
-		border-bottom: 1px solid var(--color-ink);
-		background: var(--color-paper);
-		color: var(--color-ink);
-	}
-
-	.wordmark {
-		font-family: var(--font-display);
-		font-size: clamp(17px, 2vw, 28px);
-		font-weight: 500;
+		gap: 4px;
+		height: var(--mac-menubar-h);
+		padding: 0 12px;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.16);
+		background: rgba(240, 240, 240, 0.85);
+		-webkit-backdrop-filter: blur(20px) saturate(180%);
+		backdrop-filter: blur(20px) saturate(180%);
+		font-family: var(--mac-ui);
+		font-size: 12px;
 		line-height: 1;
-		letter-spacing: -0.04em;
-		text-transform: uppercase;
-		text-decoration: none;
+		color: #1d1d1f;
+		user-select: none;
 	}
 
-	.back {
-		font-family: var(--font-mono);
-		font-size: clamp(11px, 1.1vw, 13px);
-		line-height: 1;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		text-decoration: none;
-	}
-
-	.back:hover,
-	.back:focus-visible {
-		text-decoration: underline;
-		text-underline-offset: 0.4em;
-	}
-
-	.mode {
-		/* A 24px hit area that does not move the type: the padding is cancelled
-		   by an equal negative margin, so the label sits where it always sat. */
+	.menubar-mark {
 		display: inline-flex;
 		align-items: center;
-		min-height: 24px;
-		margin: -6px -6px -6px auto;
-		padding: 0 6px;
-		border: 0;
-		background: none;
-		font-family: var(--font-mono);
-		font-size: clamp(11px, 1.1vw, 13px);
-		line-height: 1;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		cursor: pointer;
-		touch-action: manipulation;
-	}
-
-	/* The box is the state: `[ ]` dark off, `[x]` dark on. It is keyed off the theme the
-	   inline script has already written, so the header is correct at first paint. */
-	.box {
-		margin-right: 0.6em;
-		letter-spacing: 0;
-	}
-
-	.box::before {
-		content: '[ ]';
-	}
-
-	:global(html[data-theme='dark']) .box::before {
-		content: '[x]';
-	}
-
-	.mode:focus-visible {
-		outline: 2px solid currentColor;
-		outline-offset: 4px;
-	}
-
-	.progress {
-		position: fixed;
-		inset: calc(var(--head-h) - 1px) 0 auto;
-		z-index: 101;
-		height: 3px;
-		pointer-events: none;
-	}
-
-	.progress-fill {
-		width: 100%;
+		justify-content: center;
+		width: 22px;
 		height: 100%;
-		background: var(--color-snake);
-		transform: scaleX(0);
-		transform-origin: left;
-		/* Scroll-follow, not a state change: linear and short so it tracks the thumb. */
-		transition: transform 50ms linear;
+		font-size: 13px;
+		line-height: 1;
+		text-decoration: none;
 	}
 
+	.menubar-app {
+		margin-right: 6px;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		white-space: nowrap;
+	}
 
-	.page.routed {
+	.menubar-menus {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.menubar-item {
+		display: inline-flex;
+		align-items: center;
+		height: 18px;
+		padding: 0 8px;
+		border: 0;
+		border-radius: 4px;
+		background: none;
+		font: inherit;
+		color: inherit;
+		text-decoration: none;
+		white-space: nowrap;
+		cursor: default;
+	}
+
+	a.menubar-item,
+	button.menubar-item {
+		cursor: pointer;
+	}
+
+	a.menubar-item:hover,
+	a.menubar-item:focus-visible,
+	button.menubar-item:hover,
+	button.menubar-item:focus-visible {
+		background: rgba(0, 0, 0, 0.08);
+	}
+
+	.menubar-item.is-static {
+		opacity: 0.55;
+	}
+
+	.menubar-status {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-left: auto;
+		flex: none;
+	}
+
+	.theme-toggle {
+		gap: 5px;
+		font-size: 11.5px;
+		letter-spacing: 0.01em;
+	}
+
+	.toggle-dot {
+		display: block;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		border: 1px solid rgba(0, 0, 0, 0.45);
+		background: #f1f1f1;
+	}
+
+	:global(html[data-theme='dark']) .toggle-dot {
+		background: #1d1d1f;
+	}
+
+	.menubar-clock {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 6px;
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.01em;
+	}
+
+	.menubar-date {
+		opacity: 0.62;
+	}
+
+	.menubar-time {
+		font-weight: 500;
+	}
+
+	/* ---- the route surface ----------------------------------------------------------- */
+
+	/* The route content is a layer on the desktop, not the document: it fills the
+	   screen below the menu bar and never grows past it. Each route decides where its
+	   own window sits inside this box. */
+	.desktop-page {
+		position: absolute;
+		inset: var(--mac-menubar-h) 0 0;
+		z-index: 1;
+		overflow: hidden;
+	}
+
+	.desktop-page.routed {
 		animation: page-in var(--duration-2) var(--ease-standard) both;
 	}
+
+	@keyframes page-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	/* ---- the dock -------------------------------------------------------------------- */
+
+	.mac-dock {
+		position: absolute;
+		inset: auto auto 10px 50%;
+		z-index: 150;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 6px 12px;
+		border-radius: 20px;
+		background: rgba(255, 255, 255, 0.2);
+		-webkit-backdrop-filter: blur(30px) saturate(160%);
+		backdrop-filter: blur(30px) saturate(160%);
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+			0 10px 30px rgba(0, 0, 0, 0.28);
+		transform: translateX(-50%);
+	}
+
+	.dock-icon {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 46px;
+		height: 46px;
+		border-radius: 12px;
+		text-decoration: none;
+		transition: transform var(--duration-2) var(--ease-standard);
+	}
+
+	.dock-glyph {
+		font-size: 30px;
+		line-height: 1;
+		/* The glyph owns the tile: a folder emoji keeps its own colour, so the tile
+		   behind it stays glass and the icon is the only coloured thing. */
+		filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+	}
+
+	@media (hover: hover) {
+		.dock-icon:hover,
+		.dock-icon:focus-visible {
+			transform: translateY(-6px) scale(1.1);
+		}
+	}
+
+	.dock-icon:focus-visible {
+		outline: 2px solid var(--mac-blue);
+		outline-offset: 2px;
+	}
+
+	/* The running indicator: a window this app owns is on screen. */
+	.dock-dot {
+		position: absolute;
+		bottom: -3px;
+		left: 50%;
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.55);
+		opacity: 0;
+		transform: translateX(-50%);
+	}
+
+	.dock-icon.running .dock-dot {
+		opacity: 1;
+	}
+
+	/* A minimised window keeps its dock tile but reads as recessed. */
+	.dock-icon.minimized .dock-glyph {
+		opacity: 0.5;
+		filter: none;
+	}
+
+	.dock-icon.minimized .dock-dot {
+		background: transparent;
+		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+	}
+
+	.dock-divider {
+		width: 1px;
+		height: 30px;
+		background: rgba(0, 0, 0, 0.18);
+	}
+
+	/* ---- the ink portal -------------------------------------------------------------- */
 
 	.portal {
 		position: fixed;
 		inset: 0;
-		z-index: 60;
+		z-index: 300;
 		display: none;
 		pointer-events: none;
 		overflow: hidden;
@@ -630,19 +861,9 @@
 		right: 22px;
 	}
 
-	/* The header is a sibling of `.page`, so the page fade never dims the beam. */
-	@keyframes page-in {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-
 	@media (prefers-reduced-motion: reduce) {
-		.page,
-		.page.routed {
+		.desktop-page,
+		.desktop-page.routed {
 			animation: none;
 			opacity: 1;
 		}
@@ -650,15 +871,38 @@
 		.portal {
 			display: none;
 		}
+
+		.dock-icon {
+			transition: none;
+		}
 	}
 
-	@media (max-width: 520px) {
-		:global(:root) {
-			--head-h: 56px;
+	@media (max-width: 640px) {
+		.menubar-app {
+			display: none;
 		}
 
-		.site-head {
-			padding: 0 16px;
+		.menubar-date {
+			display: none;
+		}
+
+		.mac-menubar {
+			padding: 0 8px;
+		}
+
+		.mac-dock {
+			bottom: 8px;
+			gap: 6px;
+			padding: 5px 9px;
+		}
+
+		.dock-icon {
+			width: 40px;
+			height: 40px;
+		}
+
+		.dock-glyph {
+			font-size: 26px;
 		}
 	}
 </style>

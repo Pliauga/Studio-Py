@@ -36,7 +36,10 @@ dev-server.log
 .artifacts/
 .dsh-vision-router/
 screenshots/
-snake/
+# Anchored to the repo root: this ignores a scratch directory there, not the shipped
+# sprites in static/snake/. Unanchored, the pattern also swallowed the production snake
+# assets, so SnakeSpine rendered as an empty tile on the deployed site.
+/snake/
 .pre-edit/
 
 # SECURITY: Leaked Recon Data & Internal Docs

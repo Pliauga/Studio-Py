@@ -122,26 +122,27 @@
 		}
 
 		booting = true;
-		// The overlay lives inside `.page`, whose view-transition-name makes it a stacking
-		// context, so a fixed z-index cannot outrank the header. Stand the chrome down for
-		// the boot instead — the same mechanism the portal uses.
-		document.documentElement.dataset.boot = 'on';
 		const endBoot = () => {
 			booting = false;
-			delete document.documentElement.dataset.boot;
 			showHalftone();
 		};
 		// The lines paint from CSS animation-delay, so the sequence survives main-thread
 		// jank. These timers only lift the shutter at 700ms and unmount one fade later.
 		window.setTimeout(() => (bootLeaving = true), BOOT_HOLD_MS);
 		window.setTimeout(endBoot, BOOT_HOLD_MS + BOOT_FADE_MS);
-
-		// Leaving mid-boot must not strand the header hidden on the next page.
-		return () => delete document.documentElement.dataset.boot;
 	});
 
+	/** The red and yellow lights: the README leaves the desk and the index is behind it. */
+	function close(): void {
+		void goto('/dashboard');
+	}
+
 	async function enter(event: MouseEvent): Promise<void> {
-		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+		if (
+			event instanceof MouseEvent &&
+			(event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+		)
+			return;
 		event.preventDefault();
 		if (entering) return;
 		entering = true;
@@ -220,79 +221,322 @@
 	/>
 </svelte:head>
 
-<main class="hero">
-	<figure class="plate">
-		<div class="frame" data-plate-density={plate.density ?? undefined}>
-			<div class="poster-cell">
-				<img
-					bind:this={poster}
-					class="poster-image"
-					src="/studio-py-poster-1200.webp"
-					srcset="/studio-py-poster-1200.webp 1200w, /studio-py-poster-2400.webp 2400w"
-					sizes="(max-width: 900px) 100vw, 50vw"
-					alt="Studio Py poster featuring a developer in a blue puffer holding a pixel snake"
-					width="1200"
-					height="1607"
-					fetchpriority="high"
-				/>
-			</div>
-			{#if HalftonePlate}
-				<div class="halftone" aria-hidden="true">
-					<HalftonePlate {reduceMotion} />
+<!-- The landing is a document on the desktop: a README.md window resting on the
+     work surface, with its own chrome, its own scroll box, and an action bar at its
+     foot. The desktop, the menu bar and the dock belong to the layout. -->
+<div class="desktop">
+	<section class="mac-window" aria-labelledby="readme-title">
+		<div class="mac-titlebar">
+			<span class="mac-lights">
+				<button type="button" class="light red" aria-label="Close — go to the desktop" title="Close" onclick={close}>
+					<span class="mark" aria-hidden="true">×</span>
+				</button>
+				<button type="button" class="light yellow" aria-label="Minimise — go to the desktop" title="Minimise" onclick={close}>
+					<span class="mark" aria-hidden="true">−</span>
+				</button>
+				<button type="button" class="light green" aria-label="Enter the desktop" title="Enter the desktop" onclick={close}>
+					<span class="mark" aria-hidden="true">+</span>
+				</button>
+			</span>
+			<h2 class="mac-filename" id="readme-title">
+				<span class="mac-doc" aria-hidden="true">📄</span>
+				README.md
+			</h2>
+		</div>
+
+		<div class="mac-body" data-mac-scroll>
+			<main class="hero">
+				<figure class="plate">
+					<div class="frame" data-plate-density={plate.density ?? undefined}>
+						<div class="poster-cell">
+							<img
+								bind:this={poster}
+								class="poster-image"
+								src="/studio-py-poster-1200.webp"
+								srcset="/studio-py-poster-1200.webp 1200w, /studio-py-poster-2400.webp 2400w"
+								sizes="(max-width: 900px) 100vw, 50vw"
+								alt="Studio Py poster featuring a developer in a blue puffer holding a pixel snake"
+								width="1200"
+								height="1607"
+								fetchpriority="high"
+							/>
+						</div>
+						{#if HalftonePlate}
+							<div class="halftone" aria-hidden="true">
+								<HalftonePlate {reduceMotion} />
+							</div>
+						{/if}
+					</div>
+					<figcaption class="plate-caption" aria-hidden="true">
+						<span class="fig">FIG 0.1 — Operator{#if plate.density !== null}{' '}· ink {Math.round(plate.density * 100)}%{/if}</span>
+						<span class="colophon">EDITION 01/25 · OFFSET · RISO GREEN · 1200 DPI · WEBASSEMBLY</span>
+					</figcaption>
+				</figure>
+
+				<div class="readout">
+					<h1 class="headline">Stop Learning.<br />Start Patching.</h1>
+					<p class="standfirst">
+						A psychological incident-response curriculum for Python. Every waypoint is a broken system.
+						Read the traceback. Find the trap. Fix the file. No playgrounds. No excuses.
+					</p>
+					<dl class="facts">
+						<div class="fact"><dt>Modules</dt><dd>24, one incident each</dd></div>
+						<div class="fact"><dt>First run</dt><dd>16 minutes, in the browser</dd></div>
+						<div class="fact"><dt>Setup</dt><dd>None — Python runs in the page</dd></div>
+					</dl>
+					<LandingTerminal onEnter={enter} />
+					<p class="terminal-caption">
+						{pad(completedCount)} / {pad(MODULES.length)} complete
+					</p>
+					<a class="full-index" href="/dashboard" onclick={enter}>&gt; [ ACCESS_FULL_INDEX ]</a>
+				</div>
+			</main>
+
+			<!-- The machine boots, then hands off to the print. The shutter is the
+			     window's own body rather than the viewport, so the desktop, the menu bar
+			     and the dock stay put and the boot happens inside the document. Rendered
+			     only after mount, so the poster behind it keeps the LCP. The lines are all
+			     in the DOM and revealed by CSS delay, so jank cannot strand the sequence. -->
+			{#if booting}
+				<div class="boot" class:leaving={bootLeaving} aria-hidden="true">
+					<div class="boot-log">
+						{#each BOOT_LOG as line, index (index)}
+							<p style={`--i: ${index}`}>&gt; {line}</p>
+						{/each}
+						<pre class="boot-art">{#each BOOT_ART as artLine, index (index)}<span
+									style={`--i: ${index}`}
+								>{artLine}{'\n'}</span
+								>{/each}</pre>
+						<p style={`--i: ${BOOT_LOG.length + BOOT_ART.length}`} class="boot-handoff">
+							&gt; HANDOFF TO OPERATOR.<span class="boot-caret"></span>
+						</p>
+					</div>
 				</div>
 			{/if}
 		</div>
-		<figcaption class="plate-caption" aria-hidden="true">
-			<span class="fig">FIG 0.1 — Operator{#if plate.density !== null}{' '}· ink {Math.round(plate.density * 100)}%{/if}</span>
-			<span class="colophon">EDITION 01/25 · OFFSET · RISO GREEN · 1200 DPI · WEBASSEMBLY</span>
-		</figcaption>
-	</figure>
 
-	<div class="readout">
-		<h1 class="headline">Stop Learning.<br />Start Patching.</h1>
-		<p class="standfirst">
-			A psychological incident-response curriculum for Python. Every waypoint is a broken system.
-			Read the traceback. Find the trap. Fix the file. No playgrounds. No excuses.
-		</p>
-		<dl class="facts">
-			<div class="fact"><dt>Modules</dt><dd>24, one incident each</dd></div>
-			<div class="fact"><dt>First run</dt><dd>16 minutes, in the browser</dd></div>
-			<div class="fact"><dt>Setup</dt><dd>None — Python runs in the page</dd></div>
-		</dl>
-		<LandingTerminal onEnter={enter} />
-		<p class="terminal-caption">
-			{pad(completedCount)} / {pad(MODULES.length)} complete
-		</p>
-		<a class="full-index" href="/dashboard" onclick={enter}>&gt; [ ACCESS_FULL_INDEX ]</a>
-	</div>
-</main>
+		<!-- The action bar: a document viewer's footer. Close leaves the README; Enter
+		     takes the desktop over, through the snake warp. -->
+		<div class="mac-footer">
+			<button type="button" class="mac-btn" onclick={close}>[ Close ]</button>
+			<a class="mac-btn primary" href="/dashboard" onclick={enter}>[ Enter the Desktop → ]</a>
+		</div>
+	</section>
+</div>
 
 <div class="transition-overlay" bind:this={overlay} aria-hidden="true">
 	<canvas bind:this={wakeCanvas}></canvas>
 	<canvas bind:this={spriteCanvas}></canvas>
 </div>
 
-<!-- The machine boots, then hands off to the print. Rendered only after mount, so the
-     poster behind it is already painted and keeps the LCP. The lines are all in the DOM
-     and revealed by CSS delay, so jank cannot strand the sequence part-printed. -->
-{#if booting}
-	<div class="boot" class:leaving={bootLeaving} aria-hidden="true">
-		<div class="boot-log">
-			{#each BOOT_LOG as line, index (index)}
-				<p style={`--i: ${index}`}>&gt; {line}</p>
-			{/each}
-			<pre class="boot-art">{#each BOOT_ART as artLine, index (index)}<span
-						style={`--i: ${index}`}
-					>{artLine}{'\n'}</span
-					>{/each}</pre>
-			<p style={`--i: ${BOOT_LOG.length + BOOT_ART.length}`} class="boot-handoff">
-				&gt; HANDOFF TO OPERATOR.<span class="boot-caret"></span>
-			</p>
-		</div>
-	</div>
-{/if}
-
 <style>
+	/* ---- the README window ------------------------------------------------------------
+	   A document viewer resting on the desktop: an Aqua title bar, a body that scrolls
+	   inside the frame, and an action bar at the foot. The window sits where a macOS
+	   window would — clear of the menu bar above and the dock below. */
+	.desktop {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: stretch;
+		justify-content: center;
+		padding: clamp(16px, 3vh, 40px) clamp(12px, 2.4vw, 40px)
+			calc(var(--mac-dock-gutter) - var(--mac-menubar-h));
+		box-sizing: border-box;
+	}
+
+	.mac-window {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		width: min(1280px, 100%);
+		max-height: 100%;
+		min-height: 0;
+		border-radius: 12px;
+		overflow: hidden;
+		background: var(--color-paper);
+		box-shadow: var(--mac-window-shadow);
+	}
+
+	.mac-titlebar {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex: none;
+		height: 38px;
+		padding: 0 14px;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+		background: var(--mac-aqua);
+		color: var(--mac-aqua-ink);
+		font-family: var(--mac-ui);
+		user-select: none;
+	}
+
+	.mac-filename {
+		position: absolute;
+		left: 50%;
+		max-width: calc(100% - 11rem);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		margin: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-family: var(--mac-ui);
+		font-size: 13px;
+		font-weight: 600;
+		line-height: 1;
+		letter-spacing: -0.01em;
+		transform: translateX(-50%);
+	}
+
+	.mac-doc {
+		font-size: 12px;
+	}
+
+	.mac-lights {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		flex: none;
+	}
+
+	/* The Aqua lights: 12px discs, the glyph revealed only on hover so the chrome
+	   stays quiet until it is asked to do something. */
+	.light {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 12px;
+		height: 12px;
+		padding: 0;
+		border: 0;
+		border-radius: 50%;
+		box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.35);
+		cursor: pointer;
+	}
+
+	.light.red {
+		background: #ff5f57;
+	}
+
+	.light.yellow {
+		background: #febc2e;
+	}
+
+	.light.green {
+		background: #28c840;
+	}
+
+	.light .mark {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		font-family: var(--mac-ui);
+		font-size: 9px;
+		font-weight: 700;
+		line-height: 1;
+		color: rgba(0, 0, 0, 0.6);
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.mac-lights:hover .mark,
+	.light:focus-visible .mark {
+		opacity: 1;
+	}
+
+	.light:focus-visible {
+		outline: 2px solid var(--mac-blue);
+		outline-offset: 2px;
+	}
+
+	/* The document: the only scroll box on the page. The frame never moves. */
+	.mac-body {
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: clamp(20px, 3vw, 40px);
+		background: var(--color-paper);
+	}
+
+	.mac-footer {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 10px;
+		flex: none;
+		padding: 12px clamp(14px, 2vw, 20px);
+		border-top: 1px solid rgba(0, 0, 0, 0.14);
+		background: rgba(0, 0, 0, 0.035);
+		font-family: var(--mac-ui);
+	}
+
+	/* Aqua buttons are a hairline rim around a light vertical gradient, not a flat fill:
+	   the sheen is what separates them from the footer rather than a black outline. */
+	.mac-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 30px;
+		padding: 0 16px;
+		border: 0;
+		border-radius: 7px;
+		background: linear-gradient(to bottom, #fdfdfd, #e4e4e4);
+		box-shadow:
+			inset 0 0 0 0.5px rgba(0, 0, 0, 0.2),
+			0 1px 2px rgba(0, 0, 0, 0.1);
+		font-family: var(--mac-ui);
+		font-size: 13px;
+		font-weight: 500;
+		line-height: 1;
+		color: var(--mac-aqua-ink);
+		text-decoration: none;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.mac-btn:hover,
+	.mac-btn:focus-visible {
+		background: linear-gradient(to bottom, #f5f5f5, #dbdbdb);
+	}
+
+	.mac-btn:active {
+		background: linear-gradient(to bottom, #d8d8d8, #e2e2e2);
+	}
+
+	.mac-btn.primary {
+		background: linear-gradient(to bottom, #4ba3ff, var(--mac-blue));
+		box-shadow:
+			inset 0 0 0 0.5px rgba(0, 0, 0, 0.18),
+			0 1px 2px rgba(0, 0, 0, 0.18);
+		color: #ffffff;
+	}
+
+	.mac-btn.primary:hover,
+	.mac-btn.primary:focus-visible {
+		background: linear-gradient(to bottom, #429bfb, #2f8bee);
+	}
+
+	.mac-btn.primary:active {
+		background: linear-gradient(to bottom, #2a80dc, #358fe8);
+	}
+
+	.mac-btn:focus-visible {
+		outline: 2px solid var(--mac-blue);
+		outline-offset: 2px;
+	}
+
+	.mac-btn.primary:focus-visible {
+		outline-color: var(--mac-aqua-ink);
+	}
+
 	/* Flat print: the paper and typography carry the composition without a lighting effect. */
 	.hero {
 		position: relative;
@@ -301,8 +545,6 @@
 		grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
 		align-items: center;
 		gap: clamp(24px, 4.5vw, 88px);
-		min-height: 100svh;
-		padding: clamp(84px, 9vh, 132px) clamp(20px, 4vw, 64px) clamp(40px, 6vh, 72px);
 	}
 
 	/* The figure is exactly as wide as the print, so the captions align to its left edge. */
@@ -318,7 +560,10 @@
 
 	/* Sized by CSS, never by the file: the plate cannot move when the poster lands. */
 	.frame {
-		--frame-h: min(76svh, calc(100svh - 280px));
+		/* The window body is the measure now, not the viewport: subtract the chrome
+		   (menu bar, title bar, footer, dock gutter and the body's own padding) so the
+		   print lands inside the document instead of overflowing it. */
+		--frame-h: min(56vh, calc(100vh - 360px));
 		position: relative;
 		isolation: isolate;
 		/* Width is computed from the height, not left to aspect-ratio: Safari resolves a
@@ -436,13 +681,18 @@
 		min-width: 0;
 	}
 
+	/* The headline is set against the readout's own column, not the viewport: the window
+	   only ever gives the text column ~42% of its width, so a vw-based size ran past the
+	   body's right padding and bled out of the frame. */
 	.headline {
 		margin: 0;
+		max-width: 100%;
 		font-family: var(--font-display);
-		font-size: clamp(4rem, 8vw, 8rem);
+		font-size: clamp(2.6rem, 4.4vw, 3.9rem);
 		font-weight: 900;
 		line-height: 0.9;
 		letter-spacing: -0.04em;
+		overflow-wrap: break-word;
 		color: #000000;
 	}
 
@@ -514,28 +764,22 @@
 
 	/* ---- The boot ---------------------------------------------------------------------
 	   A black shutter over the already-painted poster. It fades out, so the reveal is the
-	   poster being uncovered rather than being drawn: one mechanical beat, then the print. */
-	/* The boot is a full-screen shutter, so the fixed header and the progress rule stand
-	   down for its duration — `.page` is a stacking context, so nothing inside it can
-	   outrank them by z-index. */
-	:global(html[data-boot]) :global(.site-head),
-	:global(html[data-boot]) :global(.progress) {
-		visibility: hidden;
-	}
-
+	   poster being uncovered rather than being drawn: one mechanical beat, then the print.
+	   The shutter covers the window's body, not the screen — the desktop, the menu bar and
+	   the dock stay visible while the machine starts. */
 	.boot {
-		position: fixed;
+		position: absolute;
 		inset: 0;
-		z-index: 9999;
+		z-index: 5;
 		display: flex;
 		align-items: flex-end;
 		justify-content: center;
-		padding: clamp(20px, 6vw, 72px);
+		padding: clamp(16px, 3vw, 40px);
 		overflow: hidden;
 		background: #000;
 		color: #40f51a;
 		font-family: var(--font-terminal);
-		font-size: clamp(0.8rem, 1.9vw, 1rem);
+		font-size: clamp(0.72rem, 1.5vw, 0.95rem);
 		line-height: 1.5;
 		letter-spacing: 0.04em;
 		opacity: 1;
@@ -624,17 +868,16 @@
 
 	}
 
-	/* Poster first, then the readout — the correct read on a phone. */
+	/* Poster first, then the readout — the correct read on a narrower window. */
 	@media (max-width: 899px) {
 		.hero {
 			grid-template-columns: minmax(0, 1fr);
-			align-content: center;
+			align-content: start;
 			gap: clamp(26px, 6vw, 34px);
-			padding: 78px 20px 40px;
 		}
 
 		.frame {
-			--frame-h: min(37svh, 320px);
+			--frame-h: min(34vh, 280px);
 			margin-inline: auto;
 		}
 
@@ -648,11 +891,29 @@
 		}
 
 		.headline {
-			font-size: clamp(3.5rem, 12vw, 6rem);
+			font-size: clamp(2.4rem, 9vw, 3.6rem);
 		}
 
 		.standfirst {
 			max-width: 45ch;
+		}
+	}
+
+	@media (max-width: 640px) {
+		.desktop {
+			padding: 12px 8px calc(var(--mac-dock-gutter) - var(--mac-menubar-h));
+		}
+
+		.mac-window {
+			border-radius: 10px;
+		}
+
+		.mac-footer {
+			justify-content: stretch;
+		}
+
+		.mac-btn {
+			flex: 1;
 		}
 	}
 
