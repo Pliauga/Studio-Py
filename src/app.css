@@ -123,10 +123,10 @@
 
 :root[data-theme='dark'] {
 	color-scheme: dark;
-	--color-paper: #0a0e17;
+	--color-paper: #1a1a1a;
 	--color-ink: #f1f1f1;
 	--color-tertiary: #8a96a6;
-	--color-muted: #6c7a89;
+	--color-muted: #9aa6b3;
 	--color-line: var(--color-ink);
 	--color-line-faint: rgba(241, 241, 241, 0.16);
 	--code-inline-bg: #2e2e2e;
@@ -136,9 +136,9 @@
 	--syntax-function: #f1f1f1;
 	--syntax-number: #40f51a;
 	--syntax-comment: #777777;
-	--color-desktop: #1a1a1a;
+	--color-desktop: #0a0a0a;
 	--mac-menubar-bg: rgba(20, 20, 20, 0.85);
-	--mac-window-bg: #1a1a1a;
+	--mac-window-bg: #121212;
 	--mac-titlebar-bg: linear-gradient(to bottom, #2a2a2a, #1a1a1a);
 	--mac-aqua-ink: #e8e8e8;
 	/* The desktop grid is ink-on-paper; on a black desktop it has to become light. */
@@ -146,9 +146,9 @@
 	/* A white pinstripe on a dark window would glare; the pair drops to graphite. */
 	--aqua-pinstripe-1: #2a2a2a;
 	--aqua-pinstripe-2: #232323;
-	--aqua-well: #14181f;
-	--aqua-stripe-1: #14181f;
-	--aqua-stripe-2: #1b2029;
+	--aqua-well: #202020;
+	--aqua-stripe-1: #202020;
+	--aqua-stripe-2: #282828;
 	--aqua-badge-ink: #dce9f7;
 }
 

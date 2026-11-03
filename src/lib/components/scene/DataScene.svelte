@@ -3,6 +3,8 @@
 	import { Text } from '@threlte/extras';
 	import { untrack } from 'svelte';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
+	import { INK, PAPER } from './palette.ts';
+	import InkEdges from './InkEdges.svelte';
 	import type {
 		DataFrameCommand,
 		DataFrameRow,
@@ -31,10 +33,10 @@
 	const FALL_DISTANCE = 7;
 	const FALL_SECONDS = 0.55;
 	const FONT = '/fonts/courier-prime-700.ttf';
-	const DARK = '#1b1b1b';
-	const LIGHT = '#f7f7f2';
-	const INK = '#101010';
-	const PAPER = '#f1f1f1';
+	// Healthy rows print as solid black blocks; a row whose status is not OK flips to
+	// paper stock with an ink outline, so an alert is a hole in a field of black.
+	const DARK = INK;
+	const LIGHT = PAPER;
 
 	type Block = {
 		id: number;
@@ -201,11 +203,8 @@
 	<T.Group position={[block.x, block.y, 0]}>
 		<T.Mesh castShadow receiveShadow>
 			<T.BoxGeometry args={[BLOCK_W, BLOCK_H, BLOCK_D]} />
-			<T.MeshStandardMaterial
-				color={isAlert(block.status) ? LIGHT : DARK}
-				roughness={isAlert(block.status) ? 0.9 : 0.82}
-				metalness={isAlert(block.status) ? 0 : 0.15}
-			/>
+			<T.MeshStandardMaterial color={isAlert(block.status) ? LIGHT : DARK} roughness={1} metalness={0} />
+			<InkEdges size={[BLOCK_W, BLOCK_H, BLOCK_D]} color={isAlert(block.status) ? INK : PAPER} />
 		</T.Mesh>
 
 		<Text

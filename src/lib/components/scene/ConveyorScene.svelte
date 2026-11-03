@@ -4,6 +4,8 @@
 	import { untrack } from 'svelte';
 	import type { Group } from 'three';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
+	import { GRAPHITE, INK, PAPER } from './palette.ts';
+	import InkEdges from './InkEdges.svelte';
 	import type {
 		ConveyorCommand,
 		SceneCommand,
@@ -21,10 +23,12 @@
 	let { reduceMotion = false, jammed = false, onchange }: Props = $props();
 
 	const FONT = '/fonts/courier-prime-700.ttf';
-	const DARK = '#1b1b1b';
-	const PAPER = '#f7f7f2';
-	const INK = '#101010';
-	const MID = '#2e2e2e';
+	// The machine is furniture and prints in graphite; the parcels it carries are the
+	// data and print solid black, with paper hairlines so each one reads separately.
+	// The machine is furniture, so it prints graphite; the parcels it carries
+	// are solid ink. Both are outlined in paper.
+	const DARK = GRAPHITE;
+	const MID = INK;
 
 	// Belt geometry. Items travel from START_X to END_X at a fixed speed;
 	// launches are spaced by GAP_SECONDS so a burst of yields becomes a queue.
@@ -302,20 +306,20 @@
 <T.Group position={[0, 0, 0]}>
 	<T.Mesh castShadow receiveShadow position={[(BELT_LEFT + BELT_RIGHT) / 2, 0.9, 0]}>
 		<T.BoxGeometry args={[BELT_LENGTH, 0.44, 1.5]} />
-		<T.MeshStandardMaterial color={DARK} roughness={0.85} metalness={0.12} />
+		<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 	</T.Mesh>
 
 	{#each [BELT_LEFT + 0.7, (BELT_LEFT + BELT_RIGHT) / 2, BELT_RIGHT - 0.7] as legX (legX)}
 		<T.Mesh castShadow receiveShadow position={[legX, 0.34, 0]}>
 			<T.BoxGeometry args={[0.22, 0.68, 0.22]} />
-			<T.MeshStandardMaterial color={INK} roughness={0.9} metalness={0.05} />
+			<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 		</T.Mesh>
 	{/each}
 
 	{#each [-0.8, 0.8] as railZ (railZ)}
 		<T.Mesh castShadow receiveShadow position={[(BELT_LEFT + BELT_RIGHT) / 2, 1.22, railZ]}>
 			<T.BoxGeometry args={[BELT_LENGTH, 0.16, 0.1]} />
-			<T.MeshStandardMaterial color={INK} roughness={0.8} metalness={0.2} />
+			<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 		</T.Mesh>
 	{/each}
 
@@ -323,7 +327,7 @@
 		{#each SLATS as slatX (slatX)}
 			<T.Mesh position={[slatX, BELT_TOP - 0.005, 0]}>
 				<T.BoxGeometry args={[0.16, 0.04, 1.34]} />
-				<T.MeshStandardMaterial color={MID} roughness={0.95} metalness={0} />
+				<T.MeshStandardMaterial color={MID} roughness={1} metalness={0} />
 			</T.Mesh>
 		{/each}
 	</T.Group>
@@ -333,16 +337,16 @@
 <T.Group position={[BIN_X, 0, 0]}>
 	<T.Mesh castShadow receiveShadow position={[0, 0.04, 0]}>
 		<T.BoxGeometry args={[2.2, 0.08, 1.9]} />
-		<T.MeshStandardMaterial color={DARK} roughness={0.95} metalness={0} />
+		<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 	</T.Mesh>
 	<T.Mesh castShadow receiveShadow position={[1.04, 0.47, 0]}>
 		<T.BoxGeometry args={[0.12, 0.95, 1.9]} />
-		<T.MeshStandardMaterial color={DARK} roughness={0.9} metalness={0.05} />
+		<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 	</T.Mesh>
 	{#each [-1, 1] as side (side)}
 		<T.Mesh castShadow receiveShadow position={[0, 0.47, side * 0.89]}>
 			<T.BoxGeometry args={[2.2, 0.95, 0.12]} />
-			<T.MeshStandardMaterial color={DARK} roughness={0.9} metalness={0.05} />
+			<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 		</T.Mesh>
 	{/each}
 </T.Group>
@@ -352,12 +356,13 @@
 		<T.Mesh castShadow receiveShadow>
 			<T.BoxGeometry args={[ITEM_W, ITEM_H, ITEM_D]} />
 			<T.MeshStandardMaterial
-				color={item.pale ? PAPER : DARK}
-				roughness={item.pale ? 0.9 : 0.82}
-				metalness={item.pale ? 0 : 0.15}
+				color={item.pale ? PAPER : INK}
+				roughness={1}
+				metalness={0}
 				transparent
 				opacity={item.opacity}
 			/>
+			<InkEdges size={[ITEM_W, ITEM_H, ITEM_D]} color={item.pale ? INK : PAPER} />
 		</T.Mesh>
 
 		<Text

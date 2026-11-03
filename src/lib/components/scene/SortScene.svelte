@@ -3,6 +3,8 @@
 	import { Text } from '@threlte/extras';
 	import { untrack } from 'svelte';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
+	import { INK, PAPER } from './palette.ts';
+	import InkEdges from './InkEdges.svelte';
 	import type { SceneCommand } from '#lib/pyexercise/sceneCommands.ts';
 
 	type Props = {
@@ -26,10 +28,10 @@
 	const SWAP_SECONDS = 0.28;
 	const STEP_MS = 240;
 	const FONT = '/fonts/courier-prime-700.ttf';
-	const DARK = '#1b1b1b';
-	const LIGHT = '#f7f7f2';
-	const INK = '#101010';
-	const PAPER = '#f1f1f1';
+	// Solid black data, paper hairline: a sorted pillar flips to paper stock with an
+	// ink outline, which is the one state change the scene has to make legible.
+	const DARK = INK;
+	const LIGHT = PAPER;
 
 	type Pillar = {
 		id: number;
@@ -249,7 +251,8 @@
 <T.Group position={[0, PLATFORM_H / 2, 0]}>
 	<T.Mesh castShadow receiveShadow>
 		<T.BoxGeometry args={[trackWidth, PLATFORM_H, PLATFORM_D]} />
-		<T.MeshStandardMaterial color={DARK} roughness={0.82} metalness={0.15} />
+		<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
+		<InkEdges size={[trackWidth, PLATFORM_H, PLATFORM_D]} color={PAPER} />
 	</T.Mesh>
 </T.Group>
 
@@ -257,11 +260,8 @@
 	<T.Group position={[pillar.x, pillar.y, 0]}>
 		<T.Mesh castShadow receiveShadow>
 			<T.BoxGeometry args={[PILLAR_W, pillar.height, PILLAR_D]} />
-			<T.MeshStandardMaterial
-				color={pillar.sorted ? LIGHT : DARK}
-				roughness={0.82}
-				metalness={pillar.sorted ? 0 : 0.15}
-			/>
+			<T.MeshStandardMaterial color={pillar.sorted ? LIGHT : DARK} roughness={1} metalness={0} />
+			<InkEdges size={[PILLAR_W, pillar.height, PILLAR_D]} color={pillar.sorted ? INK : PAPER} />
 		</T.Mesh>
 
 		<Text

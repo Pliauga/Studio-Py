@@ -4,6 +4,8 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { BoxGeometry, LineBasicMaterial } from 'three';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
+	import { GRAPHITE, INK, PAPER, PHOSPHOR } from './palette.ts';
+	import InkEdges from './InkEdges.svelte';
 	import type { AsyncCommand } from '#lib/pyexercise/sceneCommands.ts';
 
 	type Props = {
@@ -15,9 +17,9 @@
 
 	let { reduceMotion = false, jammed = false, onchange }: Props = $props();
 
-	const DARK = '#111111';
-	const INK = '#101010';
-	const PAPER = '#f7f7f2';
+	// Rails are graphite furniture; each task is a solid black block. A paused task is
+	// the one active state the scene reports, so it is the one thing printed in phosphor.
+	const DARK = GRAPHITE;
 	const GRID = INK;
 	const START_X = -5.2;
 	const END_X = 4.4;
@@ -214,8 +216,12 @@
 	oncreate={(helper) => {
 		const material = helper.material;
 		if (!(material instanceof LineBasicMaterial)) return;
-		material.transparent = true;
-		material.opacity = 0.24;
+		// The print pass screens every pixel, so a faded rule turns into static; a
+		// drafting rule has to be printed at full strength.
+		material.vertexColors = false;
+		material.color.set(GRID);
+		material.transparent = false;
+		material.opacity = 1;
 		material.depthWrite = false;
 	}}
 />
@@ -234,20 +240,20 @@
 		{#each SLEEPERS as x}
 			<T.Mesh position={[x, 0.07, 0]} castShadow receiveShadow>
 				<T.BoxGeometry args={[0.09, 0.12, 1.36]} />
-				<T.MeshStandardMaterial color={DARK} roughness={0.9} metalness={0.08} />
+				<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 			</T.Mesh>
 		{/each}
 
 		{#each [-0.5, 0.5] as z}
 			<T.Mesh position={[-0.45, 0.23, z]} castShadow receiveShadow>
 				<T.BoxGeometry args={[11.25, 0.18, 0.14]} />
-				<T.MeshStandardMaterial color={DARK} roughness={0.88} metalness={0.12} />
+				<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 			</T.Mesh>
 		{/each}
 
 		<T.Mesh position={[5.35, 0.35, 0]} castShadow receiveShadow>
 			<T.BoxGeometry args={[0.16, 0.7, 1.34]} />
-			<T.MeshStandardMaterial color={DARK} roughness={0.9} metalness={0.08} />
+			<T.MeshStandardMaterial color={DARK} roughness={1} metalness={0} />
 		</T.Mesh>
 
 		<SwitchyardLabel
@@ -274,13 +280,14 @@
 	<T.Group position={[task.x, task.y, laneZ(task.lane)]}>
 		<T.Mesh castShadow receiveShadow>
 			<T.BoxGeometry args={[TASK_W, TASK_H, TASK_D]} />
-			<T.MeshStandardMaterial color={DARK} roughness={0.92} metalness={0.04} />
+			<T.MeshStandardMaterial color={INK} roughness={1} metalness={0} />
+			<InkEdges size={[TASK_W, TASK_H, TASK_D]} color={PAPER} />
 		</T.Mesh>
 
 		{#if task.state === 'paused'}
 			<T.LineSegments scale={[1.005, 1.005, 1.005]}>
 				<T.EdgesGeometry args={[taskShape]} />
-				<T.LineBasicMaterial color={GRID} linewidth={1} />
+				<T.LineBasicMaterial color={PHOSPHOR} linewidth={1} />
 			</T.LineSegments>
 		{/if}
 

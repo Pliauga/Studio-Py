@@ -367,7 +367,7 @@
 		height: 38px;
 		padding: 0 14px;
 		border-bottom: 1px solid rgba(0, 0, 0, 0.18);
-		background: var(--mac-aqua);
+		background: var(--mac-titlebar-bg);
 		color: var(--mac-aqua-ink);
 		font-family: var(--mac-ui);
 		user-select: none;

@@ -11,7 +11,8 @@
 
 	let Sandbox = $state<typeof SandboxComponent>();
 	let sandbox = $state<SandboxHandle>();
-	let dropped = $state(false);
+	/** Cubes the button has released; the spawner is repeatable, so this only counts. */
+	let dropped = $state(0);
 
 	const SAMPLE =
 		'spawn_object(position=(0, 8, 0), shape="sphere", size=(1.5, 1.5, 1.5))\ndrop_cube()';
@@ -32,7 +33,7 @@
 
 	function drop() {
 		sandbox?.drop();
-		dropped = true;
+		dropped++;
 	}
 
 	function runPython() {
@@ -41,7 +42,7 @@
 
 	function reset() {
 		sandbox?.reset();
-		dropped = false;
+		dropped = 0;
 	}
 </script>
 
@@ -73,8 +74,9 @@
 		<button type="button" onclick={runPython} disabled={running}>
 			{running ? 'Running...' : 'Run Python'}
 		</button>
-		<button type="button" onclick={drop} disabled={dropped}>Drop cube</button>
-		<button type="button" onclick={reset} disabled={!dropped}>Reset</button>
+		<button type="button" onclick={drop}>Drop cube</button>
+		<button type="button" onclick={reset} disabled={dropped === 0}>Reset</button>
+		<span class="counter">bodies: {dropped}</span>
 	</div>
 
 	{#if error}
@@ -145,7 +147,15 @@
 	.controls {
 		display: flex;
 		flex-wrap: wrap;
+		align-items: center;
 		gap: 0.8rem;
+	}
+
+	.counter {
+		font: 0.875rem/1.6 var(--font-mono);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--color-ink);
 	}
 
 	.trace {

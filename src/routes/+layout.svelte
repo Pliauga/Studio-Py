@@ -14,24 +14,13 @@
 
 	type Theme = 'light' | 'dark';
 	const STORAGE_KEY = 'studio-py:theme';
-	const DARK_QUERY = '(prefers-color-scheme: dark)';
 
 	let theme = $state<Theme>('light');
 
-	function storedTheme(): Theme | null {
-		try {
-			const value = localStorage.getItem(STORAGE_KEY);
-			return value === 'dark' || value === 'light' ? value : null;
-		} catch {
-			return null;
-		}
-	}
-
-	function applyTheme(next: Theme, persist: boolean): void {
+	function applyTheme(next: Theme): void {
 		theme = next;
 		document.documentElement.dataset.theme = next;
 		syncThemeColor(next);
-		if (!persist) return;
 		try {
 			localStorage.setItem(STORAGE_KEY, next);
 		} catch {
@@ -39,25 +28,17 @@
 		}
 	}
 
+	// `data-theme` is the single source of truth: app.html writes it before first
+	// paint, so mount only has to read it back for the toggle's label.
 	onMount(() => {
-		const media = window.matchMedia(DARK_QUERY);
 		theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 		syncThemeColor(theme);
-
-		// System-first: the OS decides until the visitor makes a choice, and keeps
-		// deciding if they change it mid-session.
-		const followSystem = (event: MediaQueryListEvent | MediaQueryList): void => {
-			if (storedTheme()) return;
-			applyTheme(event.matches ? 'dark' : 'light', false);
-		};
-		media.addEventListener('change', followSystem);
-		return () => media.removeEventListener('change', followSystem);
 	});
 
 	function syncThemeColor(next: Theme): void {
 		document
 			.querySelector('meta[name="theme-color"]')
-			?.setAttribute('content', next === 'dark' ? '#000000' : '#f4e05e');
+			?.setAttribute('content', next === 'dark' ? '#1a1a1a' : '#f4e05e');
 	}
 
 	// The menu bar clock is the machine's, not the page's: client-only, because the
@@ -255,8 +236,23 @@
 	// which is the lesson route's entire LCP budget. Route changes still fade.
 	let routed = $state(false);
 
+	/**
+	 * The route fade exists for browsers that cannot cross-fade a navigation themselves.
+	 * Where `startViewTransition` is available the transition does that job properly, and
+	 * the two together are a bug: the browser snapshots the incoming page while it is still
+	 * mid-fade, so the first frame of the new view is `opacity: 0` — a flash to whatever is
+	 * underneath. The flag is therefore raised only for the fallback path.
+	 */
+	function fadeRouteChanges(): boolean {
+		const doc = document as ViewTransitionDocument;
+		return (
+			typeof doc.startViewTransition !== 'function' ||
+			document.documentElement.dataset.portalOpen !== undefined
+		);
+	}
+
 	beforeNavigate((navigation) => {
-		if (navigation.from) routed = true;
+		if (navigation.from) routed = fadeRouteChanges();
 	});
 
 	afterNavigate(() => {
@@ -278,6 +274,12 @@
 		// that, so the two would double-expose the same 220ms. The portal wins because it is
 		// the longer, page-specific move; the transition takes every other route change.
 		if (document.documentElement.dataset.portalOpen) return;
+		// The transition cross-fades the old page into the new one itself. The route's own
+		// `page-in` fade would run underneath it and the browser would snapshot the new page
+		// mid-fade — at `opacity: 0` on the first frame, which is the white flash. Stand the
+		// route fade down whenever a transition is going to paint; `beforeNavigate` raises
+		// this flag again for the next move.
+		routed = false;
 		return new Promise<void>((resolve) => {
 			doc.startViewTransition?.(async () => {
 				resolve();
@@ -316,7 +318,7 @@
 	});
 
 	function toggleTheme(): void {
-		applyTheme(theme === 'dark' ? 'light' : 'dark', true);
+		applyTheme(theme === 'dark' ? 'light' : 'dark');
 	}
 
 	/** The lesson the dock believes is open, if any: the dock is the window manager. */
@@ -408,7 +410,14 @@
 			aria-label="Dashboard — the module index"
 			title="Dashboard"
 		>
-			<span class="dock-glyph" aria-hidden="true">📁</span>
+			<img
+				class="dock-glyph"
+				src="/icons/icons_v2/ui/aqua_ui_01_finder.svg"
+				alt=""
+				width="48"
+				height="48"
+				draggable="false"
+			/>
 			<span class="dock-dot" aria-hidden="true"></span>
 		</a>
 
@@ -419,7 +428,14 @@
 			aria-label="README — about Studio Py"
 			title="README.md"
 		>
-			<span class="dock-glyph" aria-hidden="true">📄</span>
+			<img
+				class="dock-glyph"
+				src="/icons/icons_v2/ui/aqua_ui_09_pydoc.svg"
+				alt=""
+				width="48"
+				height="48"
+				draggable="false"
+			/>
 			<span class="dock-dot" aria-hidden="true"></span>
 		</a>
 
@@ -433,10 +449,38 @@
 				aria-label={`Lesson window — ${lessonOpen.title}`}
 				title={lessonOpen.title}
 			>
-				<span class="dock-glyph" aria-hidden="true">💻</span>
+				<img
+					class="dock-glyph"
+					src="/icons/icons_v2/ui/aqua_ui_04_terminal.svg"
+					alt=""
+					width="48"
+					height="48"
+					draggable="false"
+				/>
 				<span class="dock-dot" aria-hidden="true"></span>
 			</a>
 		{/if}
+
+		<span class="dock-divider" aria-hidden="true"></span>
+		<button
+			class="dock-icon"
+			class:running={theme === 'dark'}
+			type="button"
+			onclick={toggleTheme}
+			aria-pressed={theme === 'dark'}
+			aria-label="Settings — toggle dark mode"
+			title={theme === 'dark' ? 'Settings — dark mode on' : 'Settings — dark mode off'}
+		>
+			<img
+				class="dock-glyph"
+				src="/icons/icons_v2/ui/aqua_ui_05_settings.svg"
+				alt=""
+				width="48"
+				height="48"
+				draggable="false"
+			/>
+			<span class="dock-dot" aria-hidden="true"></span>
+		</button>
 	</nav>
 </div>
 
@@ -505,8 +549,8 @@
 		inset: 0;
 		z-index: 0;
 		background-image:
-			linear-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1px),
-			linear-gradient(90deg, rgba(0, 0, 0, 0.07) 1px, transparent 1px);
+			linear-gradient(var(--desktop-grid-ink) 1px, transparent 1px),
+			linear-gradient(90deg, var(--desktop-grid-ink) 1px, transparent 1px);
 		background-size: 20px 20px;
 		pointer-events: none;
 	}
@@ -523,13 +567,13 @@
 		height: var(--mac-menubar-h);
 		padding: 0 12px;
 		border-bottom: 1px solid rgba(0, 0, 0, 0.16);
-		background: rgba(240, 240, 240, 0.85);
+		background: var(--mac-menubar-bg);
 		-webkit-backdrop-filter: blur(20px) saturate(180%);
 		backdrop-filter: blur(20px) saturate(180%);
 		font-family: var(--mac-ui);
 		font-size: 12px;
 		line-height: 1;
-		color: #1d1d1f;
+		color: var(--mac-aqua-ink);
 		user-select: none;
 	}
 
@@ -681,18 +725,25 @@
 		position: relative;
 		display: grid;
 		place-items: center;
-		width: 46px;
-		height: 46px;
+		width: 48px;
+		height: 48px;
+		padding: 0;
+		border: 0;
 		border-radius: 12px;
+		background: none;
+		cursor: pointer;
 		text-decoration: none;
 		transition: transform var(--duration-2) var(--ease-standard);
 	}
 
 	.dock-glyph {
-		font-size: 30px;
-		line-height: 1;
-		/* The glyph owns the tile: a folder emoji keeps its own colour, so the tile
-		   behind it stays glass and the icon is the only coloured thing. */
+		display: block;
+		width: 48px;
+		height: 48px;
+		image-rendering: pixelated;
+		-webkit-user-drag: none;
+		/* The glyph owns the tile: the plate keeps its own palette, so the tile behind it
+		   stays glass and the icon is the only coloured thing. */
 		filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
 	}
 
@@ -902,7 +953,8 @@
 		}
 
 		.dock-glyph {
-			font-size: 26px;
+			width: 40px;
+			height: 40px;
 		}
 	}
 </style>

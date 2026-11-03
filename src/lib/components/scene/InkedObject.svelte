@@ -14,6 +14,7 @@
 		type Object3D
 	} from 'three';
 	import type { SpawnShape, Vec3 } from '#lib/pyexercise/sceneCommands.ts';
+	import { INK } from './palette.ts';
 
 	type Props = {
 		shape: SpawnShape;
@@ -35,7 +36,7 @@
 	/** The model is authored 2.1 x 2.8 x 0.3; its tallest axis is scaled to one unit. */
 	const SNAKE_SCALE = 1 / 2.8;
 
-	const LINK_INK = '#101010';
+	const LINK_INK = INK;
 	const disposables: { dispose: () => void }[] = [];
 	const material = new LineBasicMaterial({ color: spec.ink });
 	// The node's link leaves the block and travels over bare paper, where a
@@ -121,7 +122,8 @@
 {:else}
 <T.Group scale={spec.size} rotation={isNode ? [0, Math.PI / 6, 0] : [0, 0, 0]}>
 	<T.Mesh geometry={body} scale={blockScale} castShadow receiveShadow>
-		<T.MeshStandardMaterial color={spec.color} roughness={0.95} metalness={0} />
+		<!-- Matte stock: a solid printed block, never a lit surface. -->
+		<T.MeshStandardMaterial color={spec.color} roughness={1} metalness={0} />
 	</T.Mesh>
 
 	{#if blockEdges}

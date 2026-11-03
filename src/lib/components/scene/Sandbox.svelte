@@ -4,15 +4,17 @@
 	import { World, RigidBody, AutoColliders } from '@threlte/rapier';
 	import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import { BasicShadowMap, LineBasicMaterial, NoToneMapping } from 'three';
+	import { BasicShadowMap, NoToneMapping } from 'three';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
 	import RapierMotion from './RapierMotion.svelte';
 	import SceneInvalidator from './SceneInvalidator.svelte';
 	import BrutalistRender from './BrutalistRender.svelte';
+	import DraftingGrid from './DraftingGrid.svelte';
 	import InkedObject from './InkedObject.svelte';
 	import LivePosition from './LivePosition.svelte';
 	import PhantomCube from './PhantomCube.svelte';
 	import TargetBox from './TargetBox.svelte';
+	import { INK, PAPER, PHOSPHOR } from './palette.ts';
 	import type { SpawnShape, Vec3 } from '#lib/pyexercise/sceneCommands.ts';
 	import type StackSceneComponent from './StackScene.svelte';
 	import type SortSceneComponent from './SortScene.svelte';
@@ -39,11 +41,7 @@
 	const SWITCHYARD_CAMERA: Vec3 = [10.5, 9.5, 14.5];
 	const SWITCHYARD_TARGET_Y = 0.55;
 	const SWITCHYARD_TARGET_X = 0.4;
-	const PAPER = '#f1f1f1';
-	const INK = '#000000';
-	const PHOSPHOR = '#00FF41';
 	const SPARK_ANGLES = [-160, -125, -95, -60, -25, 15, 50, 95, 130, 165];
-	const CRT_GLASS = '#0a0a0a';
 	const JAM_RED = '#FF3333';
 	/** Oldest cubes are retired first, so a runaway `while True: spawn_cube()` cannot stall Rapier. */
 	const MAX_CUBES = 64;
@@ -92,8 +90,9 @@
 	const jamReason = $derived(
 		(pythonRunner.error ?? '').trim().split('\n').at(-1)?.slice(0, 72) ?? ''
 	);
+	// The stage prints ink on whatever sheet the window is currently showing: black
+	// on paper, phosphor on the dark glass, crimson while the machine is jammed.
 	const printInk = $derived(jammed ? JAM_RED : crt ? PHOSPHOR : INK);
-	const printPaper = $derived(crt ? CRT_GLASS : PAPER);
 
 	onMount(() => {
 		const query = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -107,11 +106,11 @@
 
 		const root = document.documentElement;
 		const readCrt = () => {
-			crt = root.dataset.crt === 'on';
+			crt = root.dataset.theme === 'dark';
 		};
 		readCrt();
 		const crtObserver = new MutationObserver(readCrt);
-		crtObserver.observe(root, { attributes: true, attributeFilter: ['data-crt'] });
+		crtObserver.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 
 		return () => {
 			query.removeEventListener('change', sync);
@@ -138,6 +137,8 @@
 	let asyncFinished = $state(0);
 	let asyncSnapshot = $state('');
 	let appliedSeq = 0;
+	/** Negative, so a cube spawned by the button can never collide with a Python `seq`. */
+	let localCubeId = -1;
 
 	/** Spawns waiting out their execution target, keyed by the command that asked for them. */
 	const pendingSpawns = new Map<number, PendingSpawn>();
@@ -337,21 +338,40 @@
 	});
 
 	/**
-	 * Hands the newest cube to gravity. `RigidBody` reacts to the `type` prop, so
-	 * the switch goes through Rapier's own `setBodyType` effect.
+	 * Drops a cube. The demo body is only ever one block; the lesson's Drop button
+	 * is a spawner, so every press adds another dynamic body to the same Rapier
+	 * world and the press can be repeated without limit.
 	 */
 	export function drop() {
 		if (mode !== 'cube') return;
 
+		// A Python spawn still holding its execution target drops where it stands.
 		const pending = [...pendingSpawns.values()].at(-1);
 		if (pending) {
 			pending.drop = true;
 			return;
 		}
 
-		const last = cubes.at(-1);
-		if (last) last.type = 'dynamic';
-		else bodyType = 'dynamic';
+		spawnDrop();
+	}
+
+	/** One press, one block: stacked clear of the last so the bodies never start interpenetrating. */
+	function spawnDrop() {
+		const index = cubes.length;
+		cubes.push({
+			// Local ids count down: Python spawns own the positive `seq` space.
+			id: localCubeId--,
+			position: [
+				((index % 3) - 1) * 0.9,
+				HOVER_HEIGHT + Math.floor(index / 3) * 1.6,
+				((index % 2) - 0.5) * 0.9
+			],
+			shape: 'box',
+			color: INK,
+			size: [1, 1, 1],
+			type: 'dynamic'
+		});
+		if (cubes.length > MAX_CUBES) cubes.shift();
 	}
 
 	/**
@@ -446,7 +466,7 @@
 		toneMapping={NoToneMapping}
 	>
 		<SceneInvalidator active={reduceMotion} />
-		<BrutalistRender paper={PAPER} ink={INK} outPaper={printPaper} outInk={printInk} />
+		<BrutalistRender paper={PAPER} ink={INK} outInk={printInk} transparent />
 		<T.PerspectiveCamera
 			makeDefault
 			position={mode === 'stack'
@@ -510,24 +530,18 @@
 			/>
 		</T.PerspectiveCamera>
 
-		<T.Color attach="background" args={[PAPER]} />
+		<!-- No scene background: the sheet under the glass is the container's own
+		     paper, so the stage is transparent down to it. -->
 
 		<!-- The floor plan: one hairline per unit so the paper void reads as a
 		     drafting sheet instead of an empty studio. The switchyard scene
-		     already lays out its own grid. -->
+		     already lays out its own grid.
+		     A `GridHelper` line is one device pixel wide and reaches the print pass as a
+		     graphite/paper blend, which the 8x8 Bayer screen then quantises into scattered
+		     dots — static. `DraftingGrid` draws the rules as solid ink fragments instead, so
+		     a rule survives the screen as a rule. -->
 		{#if mode !== 'switchyard'}
-			<T.GridHelper
-				args={[40, 40, INK, INK]}
-				position={[0, 0.004, 0]}
-				oncreate={(helper) => {
-					const material = helper.material;
-					if (!(material instanceof LineBasicMaterial)) return;
-					material.color.set(INK);
-					material.transparent = true;
-					material.opacity = 0.24;
-					material.depthWrite = false;
-				}}
-			/>
+			<DraftingGrid ink="#000000" size={40} period={1} />
 		{/if}
 
 		<!-- One hard key light at 45 degrees of elevation. The shadow map is kept
@@ -672,14 +686,15 @@
 		top: 1.2rem;
 		z-index: 1;
 		margin: 0;
-		padding: 0.5rem 0.8rem;
-		border: 1px solid var(--color-ink);
+		padding: 0.4rem 0.7rem;
+		border: 2px solid var(--color-ink);
 		background: var(--color-paper);
+		box-shadow: 2px 2px 0 #000;
 		color: var(--color-ink);
-		font-family: var(--font-mono);
-		font-size: 1rem;
+		font-family: var(--font-pixel);
+		font-size: 1.15rem;
 		line-height: 1.2;
-		letter-spacing: 0.12em;
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		white-space: nowrap;
 		pointer-events: none;

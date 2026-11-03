@@ -5,6 +5,8 @@
 	import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
 	import { untrack } from 'svelte';
 	import { pythonRunner } from '#lib/stores/pythonRunner.svelte.ts';
+	import { GRAPHITE, INK, PAPER } from './palette.ts';
+	import InkEdges from './InkEdges.svelte';
 	import type { Vec3 } from '#lib/pyexercise/sceneCommands.ts';
 
 	type Props = {
@@ -28,10 +30,12 @@
 	const GAP = 0.015;
 	const MAX_BLOCKS = 8;
 	const FONT = '/fonts/courier-prime-700.ttf';
-	const METAL = '#1b1b1b';
-	const METAL_EDGE = '#0e0e0e';
-	const BLOCK = '#f7f7f2';
-	const INK = '#101010';
+	// The container is furniture, so it is drawn one stop lighter than the data it
+	// holds: a graphite frame around solid black blocks. Outlines are paper, which is
+	// what makes a stack of black blocks legible as separate objects.
+	const METAL = GRAPHITE;
+	const METAL_EDGE = INK;
+	const BLOCK = INK;
 
 	type StackBlock = {
 		id: number;
@@ -215,7 +219,8 @@
 			<AutoColliders shape="cuboid" friction={0.9} restitution={0.02}>
 				<T.Mesh castShadow receiveShadow>
 					<T.BoxGeometry args={part.size} />
-					<T.MeshStandardMaterial color={part.color} roughness={0.82} metalness={0.15} />
+					<T.MeshStandardMaterial color={part.color} roughness={1} metalness={0} />
+					<InkEdges size={part.size} color={PAPER} />
 				</T.Mesh>
 			</AutoColliders>
 		</RigidBody>
@@ -227,7 +232,7 @@
 		text="LIFO"
 		font={FONT}
 		fontSize={0.1}
-		color="#d8d1c2"
+		color={PAPER}
 		anchorX="center"
 		anchorY="middle"
 		letterSpacing={0.06}
@@ -261,14 +266,15 @@
 
 			<T.Mesh castShadow receiveShadow>
 				<T.BoxGeometry args={[BLOCK_W, BLOCK_H, BLOCK_D]} />
-				<T.MeshStandardMaterial color={BLOCK} roughness={0.82} metalness={0} />
+				<T.MeshStandardMaterial color={BLOCK} roughness={1} metalness={0} />
+				<InkEdges size={[BLOCK_W, BLOCK_H, BLOCK_D]} color={PAPER} />
 			</T.Mesh>
 
 			<Text
 				text={block.value}
 				font={FONT}
 				fontSize={0.15}
-				color={INK}
+				color={PAPER}
 				anchorX="center"
 				anchorY="middle"
 				textAlign="center"

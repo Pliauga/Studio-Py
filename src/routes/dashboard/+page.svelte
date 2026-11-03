@@ -92,7 +92,7 @@
 				>
 					<span class="glyph">
 						<img
-							src={`/icons/week${module.week}_icon.svg`}
+							src={`/icons/icons_v2/lessons/week${module.week}_icon.svg`}
 							alt=""
 							class="os-icon-img"
 							width="64"
@@ -217,10 +217,10 @@
 	.glyph {
 		position: relative;
 		display: block;
-		width: 56px;
-		height: 56px;
-		/* The Argon plates are 64px pixel art; the tile scales them down as a unit so
-		   the pixels stay square and the sprite keeps its authored proportions. */
+		width: 64px;
+		height: 64px;
+		/* The Aqua plates are 64px pixel art; the tile renders them at their authored
+		   size so the 2px blocks land on whole device pixels and stay square. */
 		filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.22));
 	}
 
@@ -315,8 +315,8 @@
 		}
 
 		.glyph {
-			width: 48px;
-			height: 48px;
+			width: 64px;
+			height: 64px;
 		}
 
 		.filename {

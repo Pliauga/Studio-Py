@@ -254,6 +254,18 @@
 		--color-line-faint: rgba(0, 0, 0, 0.18);
 		--code-inline-bg: #dcebff;
 
+		/* The 8-bit skin's own surfaces. The trap card, the editor well and the SYSTEM.LOG
+		   gel bars are lit objects that keep their finish in both themes; everything here
+		   is a surface the window's paper decides, so it flips with `data-theme`. */
+		--skin-card: #f8f7f2;
+		--skin-zebra-1: #f4f6f9;
+		--skin-zebra-2: #e6eaf0;
+		--skin-edge: #000000;
+		--skin-shadow: #000000;
+		--skin-button-bg: #f1f1f1;
+		--skin-button-ink: #000000;
+		--skin-accent: #33ff00;
+
 		/* The window is still a terminal, so its reading face stays monospaced even
 		   though the paper under it is light. */
 		--font-body: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
@@ -273,6 +285,17 @@
 	:global(:root[data-theme='dark']) {
 		--color-line-faint: rgba(241, 241, 241, 0.2);
 		--code-inline-bg: #1c2432;
+
+		/* Dark keeps the same hard-edged grammar, but the card sits one step above the
+		   paper so the black border and the hard shadow still describe a solid object. */
+		--skin-card: #232323;
+		--skin-zebra-1: #1f1f1f;
+		--skin-zebra-2: #262626;
+		--skin-edge: #4a4a4a;
+		--skin-shadow: #000000;
+		--skin-button-bg: #2a2a2a;
+		--skin-button-ink: #f1f1f1;
+		--skin-accent: #33ff00;
 	}
 
 	/* ---- The desktop ------------------------------------------------------------------
@@ -637,7 +660,7 @@
 
 	/* 5. Kill blurry CRT bloom; use crisp 8-bit hard pixel shadows. */
 	.reader .prose {
-		color: #111318;
+		color: var(--color-ink);
 		line-height: 1.6;
 		text-shadow: none;
 	}
@@ -648,14 +671,14 @@
 		font-family: var(--font-pixel);
 		font-weight: 400;
 		letter-spacing: 0;
-		color: #000000;
+		color: var(--color-ink);
 		text-shadow: 3px 3px 0px #0066ff; /* Hard Aqua blue pixel offset shadow */
 	}
 
 	.reader h1 {
 		font-size: calc(var(--display) * 1.3);
 		line-height: 0.85;
-		color: #000000;
+		color: var(--color-ink);
 		text-shadow: 4px 4px 0px #33ff00; /* Hero title gets phosphor green hard shadow */
 	}
 
@@ -679,32 +702,32 @@
 
 	/* Controls: 8-bit buttons, pressed by inverting to ink on green. */
 	.reader .complete {
-		border: 2px solid #000000;
-		background: #f1f1f1;
+		border: 2px solid var(--skin-edge);
+		background: var(--skin-button-bg);
 		font-family: var(--font-pixel);
 		font-size: 1.7rem;
-		color: #000000;
+		color: var(--skin-button-ink);
 		text-shadow: none;
-		box-shadow: 4px 4px 0px #000000;
+		box-shadow: 4px 4px 0px var(--skin-shadow);
 	}
 
 	.reader .complete:hover,
 	.reader .complete:focus-visible,
 	.reader .complete.on {
-		background: #33ff00;
+		background: var(--skin-accent);
 		color: #000000;
 		text-shadow: none;
 	}
 
 	.reader .complete.on:hover,
 	.reader .complete.on:focus-visible {
-		background: #f1f1f1;
-		color: #000000;
+		background: var(--skin-button-bg);
+		color: var(--skin-button-ink);
 		text-shadow: none;
 	}
 
 	.reader .pager .dir {
-		color: #000000;
+		color: var(--color-ink);
 		text-shadow: 2px 2px 0px #66c2ff;
 	}
 
@@ -714,18 +737,18 @@
 		column-gap: 2rem;
 	}
 
-	/* 6. Chapter cards: Alabaster paper. */
+	/* 6. Chapter cards: Alabaster paper in light, one step above the paper in dark. */
 	.reader .prose :global(.chapter)::before {
 		content: '';
 		grid-area: 1 / 1 / 3 / 2;
 		align-self: stretch;
 		justify-self: stretch;
 		z-index: 0;
-		background: #f8f7f2;
+		background: var(--skin-card);
 		outline: none;
-		border: 2px solid #000000;
+		border: 2px solid var(--skin-edge);
 		border-radius: 0;
-		box-shadow: 4px 4px 0px #000000;
+		box-shadow: 4px 4px 0px var(--skin-shadow);
 	}
 
 	.reader .prose :global(.chapter .pin),
@@ -762,15 +785,15 @@
 		overflow-y: auto;
 		background: repeating-linear-gradient(
 			0deg,
-			#f4f6f9 0px,
-			#f4f6f9 2px,
-			#e6eaf0 2px,
-			#e6eaf0 4px
+			var(--skin-zebra-1) 0px,
+			var(--skin-zebra-1) 2px,
+			var(--skin-zebra-2) 2px,
+			var(--skin-zebra-2) 4px
 		);
 		outline: none;
-		border: 2px solid #000000;
+		border: 2px solid var(--skin-edge);
 		border-radius: 0;
-		box-shadow: 4px 4px 0px #000000;
+		box-shadow: 4px 4px 0px var(--skin-shadow);
 	}
 
 	/* Stepped 8-bit Aqua blue gel header bars for SYSTEM.LOG. The content literal, the

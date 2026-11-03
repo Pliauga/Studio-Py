@@ -207,21 +207,31 @@
 	button {
 		padding: 0.8rem 1.2rem;
 		white-space: nowrap;
-		border: 1px solid var(--color-ink);
+		border: 2px solid var(--color-ink);
 		border-radius: 0;
-		background: transparent;
+		background: var(--color-paper);
+		box-shadow: 2px 2px 0 #000;
 		color: var(--color-ink);
-		font: inherit;
+		font-family: var(--font-pixel);
+		font-size: 1.25rem;
+		line-height: 1;
 		cursor: pointer;
 		transition:
 			background 140ms ease,
-			color 140ms ease;
+			color 140ms ease,
+			box-shadow 140ms ease,
+			transform 140ms ease;
 	}
 
 	button:hover:not(:disabled),
 	button:focus-visible {
 		background: var(--color-snake);
 		color: var(--color-ink);
+	}
+
+	button:active:not(:disabled) {
+		box-shadow: none;
+		transform: translate(2px, 2px);
 	}
 
 	button:focus-visible {
@@ -232,6 +242,7 @@
 	button:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+		box-shadow: none;
 	}
 
 	@media (max-width: 560px) {

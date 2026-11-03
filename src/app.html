@@ -43,11 +43,11 @@
 					localStorage.removeItem(from);
 				}
 				const stored = localStorage.getItem('studio-py:theme');
-				// System-first: the OS decides until the visitor makes an explicit choice.
-				// The value is always written so the CSS has one source of truth pre-paint.
-				const chosen = stored === 'dark' || stored === 'light' ? stored : null;
-				const system = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-				document.documentElement.dataset.theme = chosen ?? system;
+				// `data-theme` is the one source of truth for the palette. It is written
+				// before first paint so the page never flashes the wrong theme, and it
+				// falls back to paper rather than guessing at the OS.
+				const chosen = stored === 'dark' || stored === 'light' ? stored : 'light';
+				document.documentElement.dataset.theme = chosen;
 			} catch {
 				/* Storage can be blocked; the paper default still applies. */
 			}
