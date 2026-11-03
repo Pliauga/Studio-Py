@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import InkStamp from '#lib/components/InkStamp.svelte';
-	import RegistrationMarks from '#lib/components/RegistrationMarks.svelte';
 	import SnakeSpine from '#lib/components/SnakeSpine.svelte';
 	import { trackWaypoints } from '#lib/motion/trail.ts';
 	import { MODULES } from '#lib/content/lessons.ts';
@@ -169,14 +168,7 @@
 		<div class="window-content" data-mac-scroll bind:this={scroller}>
 			<main class="reader">
 				<div class="sheet">
-		<RegistrationMarks />
-
 		<header class="hero">
-			<span
-				class="hero-mark"
-				style={`background-image: url(/marks/w${pad(module.week)}.webp)`}
-				aria-hidden="true"
-			></span>
 			<div class="hero-inner" data-size={sizeTier(module.title.length)}>
 				<p class="stamp">
 					<span class="plate">Plate {pad(module.week + 2)}</span>
@@ -201,11 +193,6 @@
 		</div>
 
 		<footer class="foot">
-			<span class="plus tl" aria-hidden="true"></span>
-			<span class="plus tr" aria-hidden="true"></span>
-			<span class="plus bl" aria-hidden="true"></span>
-			<span class="plus br" aria-hidden="true"></span>
-
 			<div class="signoff">
 				<span class="signoff-label">Module sign-off // Plate {pad(module.week + 2)}</span>
 				<div class="signoff-act">
@@ -984,30 +971,6 @@
 		--display: clamp(30px, 3.4vw, 46px);
 	}
 
-	.hero-mark {
-		position: absolute;
-		z-index: 0;
-		top: 50%;
-		right: clamp(-56px, -3vw, -18px);
-		width: clamp(210px, 30vw, 430px);
-		aspect-ratio: 1;
-		background-position: center;
-		background-repeat: no-repeat;
-		background-size: contain;
-		opacity: 0.065;
-		transform: translateY(-50%) rotate(6deg);
-		pointer-events: none;
-		user-select: none;
-		display: block;
-		object-fit: contain;
-	}
-
-	@media (max-width: 640px) {
-		.hero-mark {
-			display: none;
-		}
-	}
-
 	.hero-stamp {
 		position: absolute;
 		z-index: 2;
@@ -1038,11 +1001,6 @@
 	.hero .sep {
 		padding: 0 0.3em;
 		color: var(--color-muted);
-	}
-
-	:global(html[data-theme='dark']) .hero-mark {
-		filter: invert(1);
-		opacity: 0.11;
 	}
 
 	h1 {
@@ -1520,40 +1478,6 @@
 		position: relative;
 		margin-top: 0;
 		border-bottom: 1px solid var(--color-ink);
-	}
-
-	.foot .plus {
-		position: absolute;
-		z-index: 1;
-		width: 23px;
-		height: 23px;
-		color: var(--color-ink);
-		background:
-			linear-gradient(to right, currentColor 0 9px, transparent 9px 14px, currentColor 14px 100%)
-				center / 23px 1px no-repeat,
-			linear-gradient(to bottom, currentColor 0 9px, transparent 9px 14px, currentColor 14px 100%)
-				center / 1px 23px no-repeat;
-		pointer-events: none;
-	}
-
-	.foot .tl {
-		top: -12px;
-		left: -12px;
-	}
-
-	.foot .tr {
-		top: -12px;
-		right: -12px;
-	}
-
-	.foot .bl {
-		bottom: -12px;
-		left: -12px;
-	}
-
-	.foot .br {
-		right: -12px;
-		bottom: -12px;
 	}
 
 	.signoff {

@@ -66,6 +66,9 @@
 	<ul class="icons">
 		{#each MODULES as module (module.slug)}
 			{@const status = progress.statusOf(module.slug)}
+			{@const name = exeName(module.week, module.title)}
+			{@const cut = name.indexOf('_') + 1}
+			{@const ext = name.lastIndexOf('.')}
 			<li>
 				<a
 					class="icon"
@@ -101,7 +104,12 @@
 						/>
 					</span>
 
-					<span class="filename" aria-hidden="true">{exeName(module.week, module.title)}</span>
+					<!-- The name is one unbreakable token, so the only place a line may
+					     break is the week separator. The `<wbr>` marks that opportunity;
+					     without it every break falls mid-word (W02_CONDITIO / NALS.exe). -->
+					<span class="filename" aria-hidden="true"
+						>{name.slice(0, cut)}<wbr />{name.slice(cut, ext)}<wbr />{name.slice(ext)}</span
+					>
 					<!-- The portal shutter reads the card's h2, and this is the icon's real
 					     accessible name: the file name above is flavour, not the label. -->
 					<h2 class="sr-only">{module.title}</h2>
@@ -186,7 +194,7 @@
 		position: relative;
 		z-index: 1;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, 96px);
+		grid-template-columns: repeat(auto-fill, 108px);
 		justify-content: start;
 		gap: clamp(8px, 1.2vw, 16px);
 		margin: 0;
@@ -236,16 +244,26 @@
 	}
 
 	/* The label is a fixed block under the icon, so a long name wraps in place instead
-	   of widening the tile and reflowing its neighbours. `keep-all` stops the name being
-	   sliced mid-word (W01_VARIABL / ES.exe); `break-word` still lets a genuinely
-	   oversized name fall back to breaking rather than bleeding out of the tile. */
+	   of widening the tile and reflowing its neighbours. Two lines, never more: the name
+	   may only break at the week separator (see the `<wbr>` in the tile), so a longer
+	   module word takes a second line rather than an ellipsis that would hide which file
+	   it is. */
 	.filename {
-		width: 90px;
-		font-size: 11px;
-		text-align: center;
-		word-break: keep-all;
-		overflow-wrap: break-word;
+		/* The tile's inner width at its 108px column. The second line carries the module
+		   word plus the extension, and the widest of those (`ARCHITECTURE.exe`) measures
+		   97px at 10px, so the box has to be at least that wide to avoid breaking inside
+		   a word. */
+		width: 100px;
+		font-size: 10px;
 		line-height: 1.2;
+		text-align: center;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		word-break: normal;
+		overflow-wrap: break-word;
 		font-family: var(--mac-ui);
 		color: #1d1d1f;
 		/* macOS draws a light halo behind desktop labels so they read over any wallpaper. */
@@ -309,8 +327,12 @@
 	}
 
 	@media (max-width: 640px) {
+		/* Three fluid columns rather than three fixed 84px ones: the widest module word
+		   (`ARCHITECTURE`) needs ~97px at 10px, and a fixed track leaves it nowhere to go
+		   but a mid-word break. Fluid tracks keep the grid at three columns and hand every
+		   tile the width the viewport can spare. */
 		.icons {
-			grid-template-columns: repeat(auto-fill, 84px);
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 			gap: 10px;
 		}
 
@@ -320,10 +342,21 @@
 		}
 
 		.filename {
-			width: 84px;
-			font-size: 10.5px;
+			width: auto;
+			max-width: 100%;
+			font-size: 10px;
 		}
 	}
+
+	/* Below 360px a third column leaves each tile ~89px, which is narrower than the
+	   longest name tail; three columns there means clipping the extension off five
+	   files. Two wider columns keep every name whole, which is what the label is for. */
+	@media (max-width: 359px) {
+		.icons {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
 
 	@media (prefers-reduced-motion: reduce) {
 		.icons li {
