@@ -1,6 +1,6 @@
 /*
  * OFFMUTE base design. Paper, ink, and a single muted grey for metadata.
- * `--color-tertiary` (#5A595E) clears 4.5:1 on paper; the reference
+ * `--color-tertiary` (#3A4150) clears 4.5:1 on paper; the reference
  * #8A898E (2.9:1) is not used for text.
  *
  * Prose is fluid, but its floor and ceiling are rem-based so a larger browser
@@ -8,10 +8,10 @@
  */
 :root {
 	color-scheme: light;
-	--color-paper: #f1f1f1;
+	--color-paper: #f8f7f2;
 	--color-ink: #000000;
-	--color-tertiary: #5a595e;
-	--color-muted: var(--color-tertiary);
+	--color-tertiary: #3a4150;
+	--color-muted: #4a5260;
 	/* The structural rule: the grid, the plate frames, any line that carries structure. */
 	--color-line: var(--color-ink);
 	/* A rule that recedes: interior hairlines, disabled tracks. */
@@ -86,23 +86,47 @@
 	/* The dock floats clear of the bottom edge; a window reserves this much. */
 	--mac-dock-gutter: 100px;
 	--color-desktop: #f4e05e;
+	/* The cutting-mat grid on the desktop: ink on the yellow board, light on black. */
+	--desktop-grid-ink: rgba(0, 0, 0, 0.07);
 	--mac-blue: #3b99fc;
 	/* The Aqua title bar: a light gradient, not a flat fill. */
-	--mac-aqua: linear-gradient(to bottom, #e8e8e8, #d4d4d4);
+	--mac-titlebar-bg: linear-gradient(to bottom, #e8e8e8, #d4d4d4);
 	--mac-aqua-ink: #1d1d1f;
+	--mac-menubar-bg: rgba(240, 240, 240, 0.85);
+	--mac-window-bg: #f4f6f9;
 	--mac-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'Inter Fallback', system-ui, sans-serif;
 	/* One shadow for every window: a hairline edge, then a deep soft drop. */
 	--mac-window-shadow:
 		0 0 0 0.5px rgba(0, 0, 0, 0.3),
 		0 25px 70px rgba(0, 0, 0, 0.55);
+	/* The Aqua pinstripe pair. It is the only part of the shell that has to move with the
+	   theme, because it is a surface rather than a finish — see `.aqua-pinstripes`. */
+	--aqua-pinstripe-1: #ffffff;
+	--aqua-pinstripe-2: #eceef0;
+	/* The Aqua surfaces are paper-white by default. They are the only shell colours the
+	   dark theme has to answer for, because a white well on a black window glares. */
+	--aqua-well: #ffffff;
+	--aqua-stripe-1: #ffffff;
+	--aqua-stripe-2: #f1f5fa;
+	--aqua-badge-ink: #173860;
 }
 
-html[data-theme='dark'] {
+/*
+ * The theme has exactly one source of truth: `data-theme` on `<html>`. The inline
+ * script in app.html writes it before first paint, and the menu-bar toggle rewrites
+ * it. `:root` carries the light palette, so a document with no attribute at all —
+ * JS blocked, a crawler, the server's SSR pass — still reads as paper.
+ */
+:root[data-theme='light'] {
+	color-scheme: light;
+}
+
+:root[data-theme='dark'] {
 	color-scheme: dark;
-	--color-paper: #000000;
+	--color-paper: #0a0e17;
 	--color-ink: #f1f1f1;
-	--color-tertiary: #a3a2a7;
-	--color-muted: var(--color-tertiary);
+	--color-tertiary: #8a96a6;
+	--color-muted: #6c7a89;
 	--color-line: var(--color-ink);
 	--color-line-faint: rgba(241, 241, 241, 0.16);
 	--code-inline-bg: #2e2e2e;
@@ -112,6 +136,20 @@ html[data-theme='dark'] {
 	--syntax-function: #f1f1f1;
 	--syntax-number: #40f51a;
 	--syntax-comment: #777777;
+	--color-desktop: #1a1a1a;
+	--mac-menubar-bg: rgba(20, 20, 20, 0.85);
+	--mac-window-bg: #1a1a1a;
+	--mac-titlebar-bg: linear-gradient(to bottom, #2a2a2a, #1a1a1a);
+	--mac-aqua-ink: #e8e8e8;
+	/* The desktop grid is ink-on-paper; on a black desktop it has to become light. */
+	--desktop-grid-ink: rgba(255, 255, 255, 0.07);
+	/* A white pinstripe on a dark window would glare; the pair drops to graphite. */
+	--aqua-pinstripe-1: #2a2a2a;
+	--aqua-pinstripe-2: #232323;
+	--aqua-well: #14181f;
+	--aqua-stripe-1: #14181f;
+	--aqua-stripe-2: #1b2029;
+	--aqua-badge-ink: #dce9f7;
 }
 
 @font-face {
@@ -359,6 +397,283 @@ select {
 [data-mac-scroll]:focus-within::-webkit-scrollbar-thumb {
 	background-color: rgba(0, 0, 0, 0.32);
 }
+
+/*
+ * THE AQUA SHELL
+ *
+ * The chrome language of the desktop: pinstripes, jelly buttons, segmented pills,
+ * recessed wells and traffic lights. These are surfaces, not decoration — a lesson
+ * window wears them on its bars and its instruments while its reading column stays
+ * brutalist. Everything here is layout-neutral, so a caller still owns the size.
+ */
+
+/* The classic Aqua title/tool bar fill: a one-pixel white line over a hair of grey. */
+.aqua-pinstripes {
+	background: repeating-linear-gradient(
+		to bottom,
+		var(--aqua-pinstripe-1) 0px,
+		var(--aqua-pinstripe-1) 1px,
+		var(--aqua-pinstripe-2) 1px,
+		var(--aqua-pinstripe-2) 2px
+	);
+}
+
+/* The "lickable" blue pill: a four-stop gradient that reads as a glass bead, plus a
+   ::before highlight across the top half that gives it the wet sheen. */
+.aqua-btn-blue {
+	position: relative;
+	background: linear-gradient(to bottom, #a7dbff 0%, #4ea8ff 49%, #0578e8 51%, #2b93ff 100%);
+	border: 1px solid #1459a6;
+	border-radius: 9999px;
+	color: #ffffff;
+	text-shadow: 0 -1px 1px rgba(0, 36, 102, 0.85);
+	box-shadow:
+		0 1px 2px rgba(0, 0, 0, 0.35),
+		inset 0 1px 1px rgba(255, 255, 255, 0.9),
+		inset 0 -1px 2px rgba(0, 50, 150, 0.4);
+	transition:
+		filter 0.1s,
+		transform 0.05s;
+}
+
+.aqua-btn-blue::before {
+	content: '';
+	position: absolute;
+	top: 1px;
+	left: 10%;
+	right: 10%;
+	height: 44%;
+	background: linear-gradient(to bottom, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.15) 100%);
+	border-radius: 9999px;
+	pointer-events: none;
+}
+
+.aqua-btn-blue:active {
+	background: linear-gradient(to bottom, #1d6ed8 0%, #035cb6 49%, #02478f 51%, #1562c5 100%);
+	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+	transform: translateY(1px);
+}
+
+/* Its white sibling: the same bead, cast in graphite-on-silver. */
+.aqua-btn-white {
+	position: relative;
+	background: linear-gradient(to bottom, #ffffff 0%, #ececec 49%, #d2d2d2 51%, #e5e5e5 100%);
+	border: 1px solid #8e8e8e;
+	border-radius: 9999px;
+	color: #222222;
+	text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
+	box-shadow:
+		0 1px 2px rgba(0, 0, 0, 0.22),
+		inset 0 1px 1px rgba(255, 255, 255, 1),
+		inset 0 -1px 2px rgba(0, 0, 0, 0.15);
+	transition:
+		filter 0.1s,
+		transform 0.05s;
+}
+
+.aqua-btn-white::before {
+	content: '';
+	position: absolute;
+	top: 1px;
+	left: 10%;
+	right: 10%;
+	height: 44%;
+	background: linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.2) 100%);
+	border-radius: 9999px;
+	pointer-events: none;
+}
+
+.aqua-btn-white:active {
+	background: linear-gradient(to bottom, #c5c5c5 0%, #b2b2b2 49%, #9e9e9e 51%, #b6b6b6 100%);
+	box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+	transform: translateY(1px);
+}
+
+/* The pill segmented control: one silver trough, three or four beads inside it. */
+.aqua-segmented-group {
+	display: inline-flex;
+	border: 1px solid #7c7c7c;
+	border-radius: 9999px;
+	padding: 1px;
+	background: #c2c2c2;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.aqua-segmented-btn {
+	position: relative;
+	background: linear-gradient(to bottom, #ffffff 0%, #ececec 49%, #d2d2d2 51%, #e5e5e5 100%);
+	padding: 2px 14px;
+	font-size: 11px;
+	font-weight: 600;
+	color: #333;
+	border-right: 1px solid #999;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+	cursor: pointer;
+}
+
+.aqua-segmented-btn:first-child {
+	border-top-left-radius: 9999px;
+	border-bottom-left-radius: 9999px;
+}
+
+.aqua-segmented-btn:last-child {
+	border-right: none;
+	border-top-right-radius: 9999px;
+	border-bottom-right-radius: 9999px;
+}
+
+.aqua-segmented-btn.active {
+	background: linear-gradient(to bottom, #72a9e2 0%, #2974c0 49%, #105ba9 51%, #246fb8 100%);
+	color: #fff;
+	text-shadow: 0 -1px 1px rgba(0, 30, 80, 0.8);
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.aqua-segmented-btn:active:not(.active) {
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/* The traffic lights: a glass disc lit from the top, the glyph arriving on hover. The
+   caller positions them; this only draws the bead. */
+.aqua-traffic-light {
+	width: 13px;
+	height: 13px;
+	border-radius: 50%;
+	position: relative;
+	box-shadow:
+		0 1px 1px rgba(0, 0, 0, 0.3),
+		inset 0 1px 1px rgba(255, 255, 255, 0.9);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+}
+
+.aqua-traffic-light::before {
+	content: '';
+	position: absolute;
+	top: 1.5px;
+	left: 2px;
+	width: 7px;
+	height: 4px;
+	background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.1) 85%);
+	border-radius: 50%;
+}
+
+.aqua-close {
+	background: radial-gradient(circle at 50% 60%, #ff3b30 0%, #e01d12 100%);
+	border: 1px solid #b81208;
+}
+
+.aqua-minimize {
+	background: radial-gradient(circle at 50% 60%, #ffcc00 0%, #e6a100 100%);
+	border: 1px solid #b87b00;
+}
+
+.aqua-zoom {
+	background: radial-gradient(circle at 50% 60%, #34c759 0%, #20993d 100%);
+	border: 1px solid #14732a;
+}
+
+.aqua-traffic-light span {
+	opacity: 0;
+	font-size: 8px;
+	font-weight: 900;
+	color: rgba(0, 0, 0, 0.65);
+	line-height: 1;
+	transform: translateY(-0.5px);
+	transition: opacity 0.15s;
+	position: relative;
+	z-index: 1;
+}
+
+/* A grouping element opts into the reveal; the lights themselves stay unaware of it. */
+.aqua-traffic-group:hover .aqua-traffic-light span,
+.aqua-traffic-light:focus-visible span {
+	opacity: 0.9;
+}
+
+/* A recessed container: the shadow is inset, so the surface reads as cut into the panel. */
+.aqua-inset-well {
+	background: var(--aqua-well);
+	border: 1px solid #8e9092;
+	border-radius: 4px;
+	box-shadow:
+		inset 1px 1px 3px rgba(0, 0, 0, 0.28),
+		0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Zebra striping, plus the full-row selection blue that Aqua tables use on hover. */
+.aqua-table tr:nth-child(even) {
+	background-color: var(--aqua-stripe-2);
+}
+
+.aqua-table tr:nth-child(odd) {
+	background-color: var(--aqua-stripe-1);
+}
+
+.aqua-table tr:hover {
+	background-color: #3875d7 !important;
+	color: #ffffff !important;
+}
+
+.aqua-table tr:hover td {
+	color: #ffffff !important;
+}
+
+/* The pill header that caps a well. The radius is square at the bottom so it sits
+   flush against the table underneath. */
+.aqua-header-badge {
+	background: linear-gradient(to bottom, #dbe9f6 0%, #a6cbf0 49%, #8ab9e6 51%, #b0d3f7 100%);
+	border: 1px solid #6b98c4;
+	border-radius: 4px 4px 0 0;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+	color: var(--aqua-badge-ink);
+	text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* The capsule search field: a pill trough with an inset shadow, and a blue glow when
+   focus lands anywhere inside it. */
+.aqua-capsule-input {
+	background: var(--aqua-well);
+	border: 1px solid #7c7c7c;
+	border-radius: 9999px;
+	box-shadow:
+		inset 0 1px 2px rgba(0, 0, 0, 0.3),
+		0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.aqua-capsule-input:focus-within {
+	border-color: #388de8;
+	box-shadow:
+		inset 0 1px 2px rgba(0, 0, 0, 0.2),
+		0 0 5px rgba(56, 141, 232, 0.7);
+}
+
+.aqua-capsule-input input {
+	min-width: 0;
+	border: 0;
+	outline: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+}
+
+.aqua-capsule-input input::placeholder {
+	color: #7a828e;
+}
+
+/* The biennial Aqua table needs these two, or the zebra fights the cell padding. */
+.aqua-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.aqua-table th,
+.aqua-table td {
+	text-align: left;
+}
+
 
 /* One route change, one mechanical move: the out-going page drops ten pixels and fades
    in two tenths of a second, the in-coming one rises the same distance. The named group

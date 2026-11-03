@@ -31,33 +31,38 @@
 </script>
 
 <section class="telemetry" bind:this={root} aria-label={kind === 'hook' ? 'System telemetry' : 'Diagnostic summary'}>
-	{#if kind === 'hook'}
-		<header class="bar">
-			<span>SYS TELEMETRY // STANDBY</span>
-			<span class="live"><i aria-hidden="true"></i>PYODIDE 3.14</span>
-		</header>
-		<dl class="grid">
-			<div class="cell"><dt>Incident ID</dt><dd>PLT-{plate}</dd></div>
-			<div class="cell"><dt>Target</dt><dd>srv-07.status()</dd></div>
-			<div class="cell"><dt>Waypoints</dt><dd>{pad(exercises)} exercises</dd></div>
-			<div class="cell"><dt>Runtime state</dt><dd>Awaiting operator scroll <span aria-hidden="true">↓</span></dd></div>
-		</dl>
-	{:else}
-		<header class="bar">
-			<span>DIAGNOSTIC SUMMARY // DEBRIEF</span>
-		</header>
-		<dl class="grid">
-			<div class="cell" aria-live="polite">
-				<dt>Waypoints passed</dt>
-				<dd>[{pad(passed)}]/[{pad(exercises)}]</dd>
-			</div>
-			<div class="cell">
-				<dt>Status</dt>
-				<dd>Ready for sign-off <span aria-hidden="true">↓</span></dd>
-			</div>
-			<div class="cell wide"><dt>Next</dt><dd>Use MARK AS COMPLETE below</dd></div>
-		</dl>
-	{/if}
+	<div class="aqua-inset-well well">
+		<div class="aqua-header-badge badge">
+			<span>{kind === 'hook' ? 'SYS TELEMETRY // STANDBY' : 'DIAGNOSTIC SUMMARY // DEBRIEF'}</span>
+			{#if kind === 'hook'}
+				<span class="live"><i aria-hidden="true"></i>PYODIDE 3.14</span>
+			{:else}
+				<span class="live">[{pad(passed)}]/{pad(exercises)}</span>
+			{/if}
+		</div>
+
+		<table class="aqua-table readout">
+			<caption class="sr-only">{kind === 'hook' ? 'System telemetry readout' : 'Diagnostic summary readout'}</caption>
+			<tbody>
+				{#if kind === 'hook'}
+					<tr><th scope="row">Incident ID</th><td>PLT-{plate}</td></tr>
+					<tr><th scope="row">Target</th><td>srv-07.status()</td></tr>
+					<tr><th scope="row">Waypoints</th><td>{pad(exercises)} exercises</td></tr>
+					<tr>
+						<th scope="row">Runtime state</th>
+						<td>Awaiting operator scroll <span aria-hidden="true">↓</span></td>
+					</tr>
+				{:else}
+					<tr>
+						<th scope="row">Waypoints passed</th>
+						<td aria-live="polite">[{pad(passed)}]/[{pad(exercises)}]</td>
+					</tr>
+					<tr><th scope="row">Status</th><td>Ready for sign-off <span aria-hidden="true">↓</span></td></tr>
+					<tr><th scope="row">Next</th><td>Use MARK AS COMPLETE below</td></tr>
+				{/if}
+			</tbody>
+		</table>
+	</div>
 </section>
 
 <style>
@@ -66,81 +71,106 @@
 		display: flex;
 		flex: 1 1 auto;
 		flex-direction: column;
-		justify-content: space-between;
 		gap: 24px;
 		min-height: 100%;
-		padding: 20px 24px;
-		border: 1px solid var(--color-ink);
+		padding: 14px 16px;
 		font-family: var(--font-mono);
 		color: var(--color-ink);
 	}
 
-	.bar {
+	/* The well is the recess; the badge caps it and the table sits inside with no gutter,
+	   so the two read as one instrument rather than a card with a heading. */
+	.well {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.badge {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 16px;
-		font-size: 0.8rem;
+		padding: 5px 10px;
+		font-family: var(--font-pixel);
+		font-size: 1.05rem;
 		line-height: 1.2;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
 
 	.live {
 		display: inline-flex;
 		align-items: center;
-		gap: 8px;
+		gap: 7px;
+		white-space: nowrap;
 	}
 
 	.live i {
-		width: 8px;
-		height: 8px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		background: var(--color-snake);
-		box-shadow: 0 0 0 1px var(--color-ink);
+		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
 	}
 
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		margin: 0;
-		border-top: 1px solid var(--divider);
-		border-left: 1px solid var(--divider);
-		--divider: color-mix(in srgb, var(--color-ink) 8%, transparent);
+	/* The brutalism stays in the type: the pixel face carries every cell, so the zebra
+	   stripes read as a terminal printout rather than a web table. The lesson's own
+	   `.prose table` rule is two classes deep, so this one is too. */
+	.telemetry .readout {
+		font-family: var(--font-pixel);
+		font-size: 1.1rem;
+		line-height: 1.25;
+		letter-spacing: 0.03em;
+		color: var(--color-ink);
 	}
 
-	.cell {
-		display: grid;
-		gap: 8px;
-		min-width: 0;
-		padding: 14px 16px;
-		border-right: 1px solid var(--divider);
-		border-bottom: 1px solid var(--divider);
+	.telemetry .readout th,
+	.telemetry .readout td {
+		padding: 4px 10px;
+		font-family: var(--font-pixel);
+		font-size: 1.1rem;
+		vertical-align: baseline;
 	}
 
-	.cell.wide {
-		grid-column: 1 / -1;
-	}
-
-	dt {
-		font-size: 0.7rem;
-		letter-spacing: 0.14em;
+	.telemetry .readout th {
+		width: 41%;
+		font-weight: 400;
 		text-transform: uppercase;
+		letter-spacing: 0.08em;
 		color: var(--color-muted);
 	}
 
-	dd {
-		margin: 0;
-		font-size: 0.95rem;
-		line-height: 1.3;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
+	.telemetry .readout td {
 		overflow-wrap: anywhere;
+		text-transform: uppercase;
+	}
+
+	/* The row hover of `.aqua-table` turns the row Aqua blue; the pixel face has to keep
+	   its contrast there, which the shared rule already forces on `td`. */
+	.telemetry .readout tr:hover th {
+		color: #ffffff;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	@media (max-width: 520px) {
-		.grid {
-			grid-template-columns: minmax(0, 1fr);
+		.telemetry {
+			padding: 16px 14px;
+		}
+
+		.readout th {
+			width: 46%;
 		}
 	}
 </style>

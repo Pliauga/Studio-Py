@@ -79,11 +79,9 @@
 	let themeFactory: ((theme: 'light' | 'dark') => Extension) | undefined;
 	let activeTheme: 'light' | 'dark' = 'light';
 
-	/** A lesson's CRT switch outranks the site theme: the terminal is dark, the print page light. */
+	/** `data-theme` is the one source of truth: the editor follows the page. */
 	function pageTheme(): 'light' | 'dark' {
-		const root = document.documentElement;
-		if (root.dataset.crt) return root.dataset.crt === 'on' ? 'dark' : 'light';
-		return root.dataset.theme === 'dark' ? 'dark' : 'light';
+		return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 	}
 
 	function themeExtensions(theme: 'light' | 'dark'): Extension {
@@ -252,7 +250,7 @@
 		});
 		themeObserver.observe(document.documentElement, {
 			attributes: true,
-			attributeFilter: ['data-theme', 'data-crt']
+			attributeFilter: ['data-theme']
 		});
 
 		// The interpreter is a 12 MB download. Hold it until the exercise is
@@ -351,12 +349,14 @@
 
 			<div class="actions">
 				{#if showReset}
-					<button type="button" class="ghost" onclick={handleReset} disabled={busy}>Reset</button>
+					<button type="button" class="aqua-btn-white reset" onclick={handleReset} disabled={busy}>
+						Reset
+					</button>
 				{/if}
 
 				<button
 					type="button"
-					class="ghost"
+					class="aqua-btn-white solution"
 					onclick={handleShowSolution}
 					disabled={busy || solutionShown || !getSolution(id)}
 					data-testid="show-solution"
@@ -366,7 +366,7 @@
 
 				<button
 					type="button"
-					class="run"
+					class="aqua-btn-blue run"
 					class:running={busy}
 					onclick={handleRun}
 					disabled={busy || runtimeStatus === 'loading'}
@@ -670,27 +670,24 @@
 		justify-content: flex-end;
 	}
 
+	/* Layout only: the finish belongs to `.aqua-btn-blue` / `.aqua-btn-white`, and a
+	   component-scoped rule here would out-specify them and repaint the pills flat. */
 	button {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 0.7rem;
-		padding: 0.7rem 1.2rem;
-		border: 1px solid var(--color-ink);
-		background: transparent;
-		font-family: var(--font-mono);
-		font-size: 0.875rem;
+		padding: 0.5rem 1.15rem;
+		font-family: var(--font-terminal);
+		font-size: 0.9375rem;
+		line-height: 1.1;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--color-ink);
 		cursor: pointer;
-		transition:
-			background 160ms ease,
-			color 160ms ease;
 	}
 
 	button:focus-visible {
-		outline: 2px solid var(--color-ink);
+		outline: 2px solid #0066ff;
 		outline-offset: 3px;
 	}
 
@@ -699,22 +696,7 @@
 		opacity: 0.45;
 	}
 
-	.ghost:hover:not(:disabled) {
-		background: var(--color-ink);
-		color: var(--color-paper);
-	}
-
-	.run {
-		background: var(--color-ink);
-		color: var(--color-paper);
-	}
-
-	.run:hover:not(:disabled),
-	.run:focus-visible {
-		background: transparent;
-		color: var(--color-ink);
-	}
-
+	/* A pressed jelly pill keeps its colour; only the spinner speaks while running. */
 	.run.running {
 		opacity: 1;
 	}
@@ -1026,12 +1008,15 @@
 			gap: 0.8rem;
 		}
 
+		/* A thumb needs about 40px of height; the pills grow vertically only, so they stay
+		   the same bead shape the desktop shows. */
 		button {
-			padding: 1rem 1.5rem;
+			padding: 0.7rem 1.35rem;
+			font-size: 1rem;
 		}
 
 		.run {
-			padding: 1rem 2.2rem;
+			padding: 0.7rem 1.8rem;
 		}
 
 		.status {

@@ -69,10 +69,28 @@
 	}
 
 	const traffic = [
-		{ tone: 'red', mark: '×', label: 'Close window', act: closeWindow },
-		{ tone: 'yellow', mark: '-', label: 'Minimise window', act: minimizeWindow },
-		{ tone: 'green', mark: '+', label: 'Maximise window', act: toggleMaximize }
+		{ tone: 'red', cls: 'aqua-close', mark: '×', label: 'Close window', act: closeWindow },
+		{ tone: 'yellow', cls: 'aqua-minimize', mark: '-', label: 'Minimise window', act: minimizeWindow },
+		{ tone: 'green', cls: 'aqua-zoom', mark: '+', label: 'Maximise window', act: toggleMaximize }
 	] as const;
+
+	/** The toolbar's segmented control. The panes are one document, so the choice is a
+	    view preference rather than a route: it is held here until the reader leaves. */
+	const panes = [
+		{ id: 'all', label: 'All Panes' },
+		{ id: 'narrative', label: 'Narrative' },
+		{ id: 'telemetry', label: 'Telemetry' },
+		{ id: 'terminal', label: 'Terminal' }
+	] as const;
+
+	let activePane = $state<string>('all');
+	let query = $state('');
+
+	/** The toolbar's Execute: it is the window's own Run affordance, so it reaches the
+	    lesson's first exercise rather than re-implementing the run. */
+	function runExercise(): void {
+		article?.querySelector<HTMLButtonElement>('[data-testid="run"]')?.click();
+	}
 
 	// Reading the article is what marks a lesson opened; `complete()` is the
 	// only explicit act, so the dashboard never overstates progress.
@@ -84,15 +102,6 @@
 				? trackWaypoints(trail, article, scroller, (percent) => (waypoint = percent))
 				: undefined;
 		return () => stopTrail?.();
-	});
-
-	// The lesson is a terminal window, so the machine palette is no longer a mode: the
-	// editor and the sandbox read `data-crt` for their own surfaces and must stay dark.
-	$effect(() => {
-		document.documentElement.dataset.crt = 'on';
-		return () => {
-			delete document.documentElement.dataset.crt;
-		};
 	});
 
 	function toggleComplete(): void {
@@ -108,26 +117,57 @@
 <div class="desktop" class:maximized>
 	<div class="os-window" class:maximized>
 		<div class="crt-scan on" aria-hidden="true"></div>
-		<div class="title-bar">
-			<span class="traffic">
+		<div class="title-bar aqua-pinstripes">
+			<span class="aqua-traffic-group traffic">
 				{#each traffic as light (light.tone)}
 					<button
 						type="button"
-						class="light {light.tone}"
+						class="aqua-traffic-light {light.cls}"
 						aria-label={light.label}
 						aria-pressed={light.tone === 'green' ? maximized : undefined}
 						title={light.label}
 						onclick={light.act}
 					>
-						<span class="mark" aria-hidden="true">{light.mark}</span>
+						<span aria-hidden="true">{light.mark}</span>
 					</button>
 				{/each}
 			</span>
 			<span class="window-name">{filename}</span>
-			<a class="window-close" href="/dashboard">[ CLOSE ]</a>
+			<span class="incident-badge">ACTIVE INCIDENT: PLT-{pad(module.week + 2)}</span>
+		</div>
+
+		<div class="window-toolbar aqua-pinstripes">
+			<div class="aqua-segmented-group panes" role="group" aria-label="Filter panes">
+				{#each panes as pane (pane.label)}
+					<button
+						type="button"
+						class="aqua-segmented-btn"
+						class:active={activePane === pane.id}
+						aria-pressed={activePane === pane.id}
+						onclick={() => (activePane = pane.id)}
+					>
+						{pane.label}
+					</button>
+				{/each}
+			</div>
+
+			<div class="toolbar-right">
+				<label class="aqua-capsule-input">
+					<svg class="capsule-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+						<circle cx="5.2" cy="5.2" r="3.6" />
+						<path d="M7.9 7.9 10.6 10.6" />
+					</svg>
+					<span class="sr-only">Search this lesson</span>
+					<input type="search" placeholder="Search waypoints…" bind:value={query} />
+				</label>
+				<button type="button" class="aqua-btn-blue execute" onclick={runExercise}>
+					<span class="execute-glyph" aria-hidden="true">▶</span>
+					Execute
+				</button>
+			</div>
 		</div>
 		<div class="window-content" data-mac-scroll bind:this={scroller}>
-			<main class="reader crt">
+			<main class="reader">
 				<div class="sheet">
 		<RegistrationMarks />
 
@@ -207,18 +247,15 @@
 	   CRT bloom is gone in favour of hard pixel shadows, Alabaster paper, stepped Aqua gel
 	   bars and a black line around everything that used to glow. */
 
-	/* 1. Palette: Aqua Pinstripe + Alabaster Paper + 8-Bit Ink */
-	:global(:root[data-crt='on'][data-theme]) {
-		color-scheme: light;
-		--color-paper: #f8f7f2;
-		--color-ink: #000000;
-		--color-tertiary: #3a4150;
-		--color-muted: #4a5260;
+	/* 1. The window's reading palette. The page-wide `data-theme` decides the paper and
+	   the ink; this block only declares what the 8-bit skin adds on top — a monospaced
+	   reading face and a hard-edged editor well that stays dark in both themes. */
+	:global(:root) {
 		--color-line-faint: rgba(0, 0, 0, 0.18);
 		--code-inline-bg: #dcebff;
 
 		/* The window is still a terminal, so its reading face stays monospaced even
-		   though the paper under it is now light. */
+		   though the paper under it is light. */
 		--font-body: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
 		--font-mono: 'Share Tech Mono', 'Courier Prime', 'Courier Prime Fallback', ui-monospace, Menlo, monospace;
 
@@ -233,20 +270,9 @@
 		--syntax-comment: #6c7a89;
 	}
 
-	:global(:root[data-crt='off'][data-theme]) {
-		color-scheme: light;
-		--color-paper: #f1f1f1;
-		--color-ink: #000000;
-		--color-tertiary: #5a595e;
-		--color-muted: var(--color-tertiary);
-		--color-line-faint: rgba(0, 0, 0, 0.14);
-		--code-inline-bg: #e5e5e5;
-		--syntax-keyword: #000000;
-		--syntax-builtin: #005c8c;
-		--syntax-string: #005c8c;
-		--syntax-function: #000000;
-		--syntax-number: #005c8c;
-		--syntax-comment: #828282;
+	:global(:root[data-theme='dark']) {
+		--color-line-faint: rgba(241, 241, 241, 0.2);
+		--code-inline-bg: #1c2432;
 	}
 
 	/* ---- The desktop ------------------------------------------------------------------
@@ -299,7 +325,7 @@
 		height: calc(100% - var(--mac-dock-gutter) - 5vh);
 		border-radius: 12px;
 		overflow: hidden;
-		background: #1a1a1a;
+		background: var(--mac-window-bg);
 		/* A hairline edge plus a deep soft drop: the window sits above the desktop
 		   rather than being drawn onto it. */
 		box-shadow: var(--mac-window-shadow);
@@ -315,20 +341,19 @@
 			transform var(--duration-3) var(--ease-standard);
 	}
 
-	/* The title bar: traffic lights on the left, the file name centred. Aqua is a light
-	   glassy gradient, not a flat fill, and the hairline keeps the edge crisp at any zoom. */
+	/* The title bar: Aqua pinstripes under the traffic lights and the centred file name.
+	   The stripe pair comes from `.aqua-pinstripes`, so only the frame is declared here. */
 	.title-bar {
 		position: relative;
 		/* Above the raster: the screen belongs below the chrome. */
-		z-index: 3;
+		z-index: 4;
 		display: flex;
 		align-items: center;
 		gap: 12px;
 		flex: none;
-		height: 38px;
-		padding: 0 14px;
-		border-bottom: 1px solid rgba(0, 0, 0, 0.18);
-		background: var(--mac-aqua);
+		height: 30px;
+		padding: 0 12px;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.22);
 		color: var(--mac-aqua-ink);
 		font-family: var(--mac-ui);
 		user-select: none;
@@ -341,56 +366,143 @@
 		flex: none;
 	}
 
-	/* The lights are buttons, so they take the default form chrome off and keep the
-	   circle: the disc is the hit area. The glyph is an affordance that appears on hover,
-	   the way a managed window behaves. */
-	.light {
-		position: relative;
-		display: grid;
-		place-items: center;
-		width: 12px;
-		height: 12px;
+	/* The lights are buttons, so they drop the form chrome; the disc in the shared Aqua
+	   class is the hit area, and its glyph arrives on hover of the group. */
+	.traffic :global(.aqua-traffic-light) {
 		padding: 0;
-		border: 0;
-		border-radius: 50%;
-		box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.35);
-		cursor: pointer;
-	}
-
-	.light .mark {
-		position: absolute;
-		inset: 0;
-		display: grid;
-		place-items: center;
+		border-width: 1px;
+		border-style: solid;
 		font-family: var(--mac-ui);
-		font-size: 9px;
-		font-weight: 700;
-		line-height: 1;
-		color: rgba(0, 0, 0, 0.6);
-		opacity: 0;
-		pointer-events: none;
 	}
 
-	.traffic:hover .mark,
-	.light:focus-visible .mark {
-		opacity: 1;
-	}
-
-	.light:focus-visible {
+	.traffic :global(.aqua-traffic-light:focus-visible) {
 		outline: 2px solid var(--mac-blue);
 		outline-offset: 2px;
 	}
 
-	.light.red {
-		background: #ff5f57;
+	/* The incident pill is the window's state, not decoration: it is the same plate number
+	   the hero and the footer carry, so the three read as one document. */
+	.incident-badge {
+		flex: none;
+		margin-left: auto;
+		padding: 2px 9px;
+		border: 1px solid #6b98c4;
+		border-radius: 9999px;
+		background: linear-gradient(to bottom, #dbe9f6 0%, #a6cbf0 49%, #8ab9e6 51%, #b0d3f7 100%);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+		font-family: var(--font-pixel);
+		font-size: 13px;
+		line-height: 1.15;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--aqua-badge-ink);
+		white-space: nowrap;
 	}
 
-	.light.yellow {
-		background: #febc2e;
+	/* The toolbar is the second tier: the Aqua controls sit on the same pinstripe as the
+	   title bar, divided by a hairline rather than by a change of surface. */
+	.window-toolbar {
+		position: relative;
+		z-index: 4;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 14px;
+		flex: none;
+		min-height: 34px;
+		padding: 4px 12px;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.22);
+		font-family: var(--mac-ui);
+		user-select: none;
 	}
 
-	.light.green {
-		background: #28c840;
+	/* Sized here rather than in the shared class: the segmented buttons are 11px type with
+	   2px of vertical padding, which is right for a menubar but too small for a toolbar. */
+	.panes :global(.aqua-segmented-btn) {
+		padding: 3px 12px;
+		font-size: 11.5px;
+		white-space: nowrap;
+	}
+
+	.toolbar-right {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+	}
+
+	.toolbar-right :global(.aqua-capsule-input) {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
+		width: 190px;
+		height: 24px;
+		padding: 0 10px;
+	}
+
+	.toolbar-right :global(.aqua-capsule-input input) {
+		width: 100%;
+		font-family: var(--mac-ui);
+		font-size: 11.5px;
+		/* The default search decoration is a second affordance next to the glyph. */
+		-webkit-appearance: none;
+		appearance: none;
+	}
+
+	.toolbar-right :global(.aqua-capsule-input input)::-webkit-search-cancel-button {
+		display: none;
+	}
+
+	.capsule-glyph {
+		flex: none;
+		width: 11px;
+		height: 11px;
+		fill: none;
+		stroke: #6b7480;
+		stroke-width: 1.3;
+		stroke-linecap: round;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	/* The Aqua jelly pill: padding and type only, so the gradient and its sheen stay the
+	   shared class's business. */
+	.execute {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 3px 13px;
+		font-family: var(--mac-ui);
+		font-size: 11.5px;
+		font-weight: 600;
+		letter-spacing: 0.01em;
+		cursor: pointer;
+	}
+
+	.execute-glyph {
+		font-size: 8px;
+		line-height: 1;
+	}
+
+	.execute:focus-visible {
+		outline: 2px solid var(--mac-blue);
+		outline-offset: 2px;
+	}
+
+	.panes :global(.aqua-segmented-btn:focus-visible) {
+		outline: 2px solid var(--mac-blue);
+		outline-offset: 1px;
 	}
 
 	/* Maximised, the window fills the screen below the menu bar. The route surface
@@ -407,44 +519,21 @@
 		transform: none;
 	}
 
+	/* The name is centred in the bar itself. The badge on the right is allowed to be wider
+	   than the light cluster on the left, so the offset is measured against the badge. */
 	.window-name {
 		position: absolute;
 		left: 50%;
-		max-width: calc(100% - 15rem);
+		max-width: calc(100% - 18rem);
 		overflow: hidden;
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		font-family: var(--mac-ui);
-		font-size: 13px;
+		font-size: 12.5px;
 		font-weight: 600;
 		line-height: 1;
 		letter-spacing: -0.01em;
 		transform: translateX(-50%);
-	}
-
-	/* The right-hand slot balances the traffic lights so the name stays centred: it is
-	   the window's own close affordance, not a second set of lights. */
-	.window-close {
-		flex: none;
-		margin-left: auto;
-		padding: 3px 8px;
-		border-radius: 5px;
-		color: var(--mac-aqua-ink);
-		text-decoration: none;
-		font-family: var(--mac-ui);
-		font-size: 11px;
-		font-weight: 500;
-		letter-spacing: 0.01em;
-	}
-
-	.window-close:hover,
-	.window-close:focus-visible {
-		background: rgba(0, 0, 0, 0.1);
-	}
-
-	.window-close:focus-visible {
-		outline: 2px solid var(--mac-blue);
-		outline-offset: 1px;
 	}
 
 	/* The pane the lesson scrolls inside. `overscroll-behavior` keeps the wheel from
@@ -470,8 +559,69 @@
 		}
 
 		.window-name {
-			max-width: calc(100% - 11rem);
+			max-width: calc(100% - 13rem);
 			font-size: 11.5px;
+		}
+
+		/* The toolbar keeps both tiers but drops what a phone cannot use: the search field
+		   would compress to an unlabelled sliver, and the segmented pills would scroll. */
+		.toolbar-right :global(.aqua-capsule-input) {
+			display: none;
+		}
+
+		.panes :global(.aqua-segmented-btn) {
+			padding: 3px 8px;
+			font-size: 10.5px;
+		}
+
+		.incident-badge {
+			font-size: 11px;
+			padding: 2px 7px;
+		}
+	}
+
+	@media (max-width: 560px) {
+		/* Below a phone's width the segmented control and the Execute pill cannot both
+		   fit on one line, so the toolbar wraps instead of clipping either. */
+		.window-toolbar {
+			flex-wrap: wrap;
+			row-gap: 6px;
+			padding: 5px 10px;
+		}
+
+		.panes :global(.aqua-segmented-btn) {
+			padding: 3px 6px;
+			font-size: 10px;
+		}
+
+		.incident-badge {
+			font-size: 10px;
+		}
+	}
+
+	@media (max-width: 640px) {
+		/* On a phone the window is the app: a floating 12px frame around a 359px screen
+		   wastes the gutter on nothing. It fills the route surface outright. */
+		.os-window {
+			top: 0;
+			left: 0;
+			width: 100vw;
+			max-width: 100vw;
+			height: 100%;
+			border-radius: 0;
+			box-shadow: none;
+			transform: none;
+		}
+
+		/* Centring is a function of spare width, and a phone has none: the badge and the
+		   lights together eat more than the bar. The name takes what is left and truncates. */
+		.window-name {
+			position: static;
+			flex: 1 1 auto;
+			min-width: 0;
+			max-width: none;
+			transform: none;
+			text-align: left;
 		}
 	}
 
@@ -486,15 +636,15 @@
 	   headers and frames. */
 
 	/* 5. Kill blurry CRT bloom; use crisp 8-bit hard pixel shadows. */
-	.reader.crt .prose {
+	.reader .prose {
 		color: #111318;
 		line-height: 1.6;
 		text-shadow: none;
 	}
 
-	.reader.crt h1,
-	.reader.crt .prose :global(h2),
-	.reader.crt .prose :global(h3) {
+	.reader h1,
+	.reader .prose :global(h2),
+	.reader .prose :global(h3) {
 		font-family: var(--font-pixel);
 		font-weight: 400;
 		letter-spacing: 0;
@@ -502,33 +652,33 @@
 		text-shadow: 3px 3px 0px #0066ff; /* Hard Aqua blue pixel offset shadow */
 	}
 
-	.reader.crt h1 {
+	.reader h1 {
 		font-size: calc(var(--display) * 1.3);
 		line-height: 0.85;
 		color: #000000;
 		text-shadow: 4px 4px 0px #33ff00; /* Hero title gets phosphor green hard shadow */
 	}
 
-	.reader.crt h1::after {
+	.reader h1::after {
 		display: none; /* Remove blur(12px) duplicate */
 	}
 
-	.reader.crt .prose :global(h2) {
+	.reader .prose :global(h2) {
 		font-size: clamp(40px, 4.6vw, 72px);
 		line-height: 0.9;
 	}
 
-	.reader.crt .stamp,
-	.reader.crt .signoff-label,
-	.reader.crt .dir,
-	.reader.crt .prose :global(.trap .trap-head) {
+	.reader .stamp,
+	.reader .signoff-label,
+	.reader .dir,
+	.reader .prose :global(.trap .trap-head) {
 		font-family: var(--font-pixel);
 		font-size: 1.5rem;
 		letter-spacing: 0.1em;
 	}
 
 	/* Controls: 8-bit buttons, pressed by inverting to ink on green. */
-	.reader.crt .complete {
+	.reader .complete {
 		border: 2px solid #000000;
 		background: #f1f1f1;
 		font-family: var(--font-pixel);
@@ -538,34 +688,34 @@
 		box-shadow: 4px 4px 0px #000000;
 	}
 
-	.reader.crt .complete:hover,
-	.reader.crt .complete:focus-visible,
-	.reader.crt .complete.on {
+	.reader .complete:hover,
+	.reader .complete:focus-visible,
+	.reader .complete.on {
 		background: #33ff00;
 		color: #000000;
 		text-shadow: none;
 	}
 
-	.reader.crt .complete.on:hover,
-	.reader.crt .complete.on:focus-visible {
+	.reader .complete.on:hover,
+	.reader .complete.on:focus-visible {
 		background: #f1f1f1;
 		color: #000000;
 		text-shadow: none;
 	}
 
-	.reader.crt .pager .dir {
+	.reader .pager .dir {
 		color: #000000;
 		text-shadow: 2px 2px 0px #66c2ff;
 	}
 
 	/* The instrument panel: each sub-system is an Alabaster card edged in ink and lifted
 	   by a hard shadow. */
-	.reader.crt .prose :global(.chapter.split) {
+	.reader .prose :global(.chapter.split) {
 		column-gap: 2rem;
 	}
 
 	/* 6. Chapter cards: Alabaster paper. */
-	.reader.crt .prose :global(.chapter)::before {
+	.reader .prose :global(.chapter)::before {
 		content: '';
 		grid-area: 1 / 1 / 3 / 2;
 		align-self: stretch;
@@ -578,8 +728,8 @@
 		box-shadow: 4px 4px 0px #000000;
 	}
 
-	.reader.crt .prose :global(.chapter .pin),
-	.reader.crt .prose :global(.chapter .chapter-body) {
+	.reader .prose :global(.chapter .pin),
+	.reader .prose :global(.chapter .chapter-body) {
 		position: relative;
 		z-index: 1;
 		padding: 0 20px;
@@ -589,23 +739,23 @@
 	   indent pushed the prose down to 32 characters a line. The well keeps a token inset
 	   so the panel still reads; the window supplies the rest. */
 	@media (max-width: 900px) {
-		.reader.crt .prose :global(.chapter .pin),
-		.reader.crt .prose :global(.chapter .chapter-body) {
+		.reader .prose :global(.chapter .pin),
+		.reader .prose :global(.chapter .chapter-body) {
 			padding: 0 10px;
 		}
 	}
 
-	.reader.crt .prose :global(.chapter .chapter-body) {
+	.reader .prose :global(.chapter .chapter-body) {
 		align-self: stretch;
 		margin-bottom: 0;
 		padding-bottom: 20px;
 	}
 
-	.reader.crt .prose :global(.chapter .pin-inner) {
+	.reader .prose :global(.chapter .pin-inner) {
 		margin: 0 0 12px;
 	}
 
-	.reader.crt .prose :global(.chapter .console-slot) {
+	.reader .prose :global(.chapter .console-slot) {
 		box-sizing: border-box;
 		margin-top: 0;
 		padding: 0 20px 20px;
@@ -625,8 +775,8 @@
 
 	/* Stepped 8-bit Aqua blue gel header bars for SYSTEM.LOG. The content literal, the
 	   margins and the type are the panel's own; only the finish is new. */
-	.reader.crt .prose :global(.chapter .pin)::before,
-	.reader.crt .prose :global(.chapter .console-slot)::before {
+	.reader .prose :global(.chapter .pin)::before,
+	.reader .prose :global(.chapter .console-slot)::before {
 		content: '> SYSTEM.LOG: NARRATIVE';
 		display: block;
 		margin: 0 -20px 20px;
@@ -653,7 +803,7 @@
 		text-shadow: 1px 1px 0px #000000;
 	}
 
-	.reader.crt .prose :global(.chapter .console-slot)::before {
+	.reader .prose :global(.chapter .console-slot)::before {
 		content: '> SYSTEM.LOG: EXECUTION';
 		position: sticky;
 		top: 0;
@@ -662,33 +812,40 @@
 		margin-bottom: 0;
 	}
 
-	.reader.crt .prose :global(.chapter .console-slot.telemetry)::before {
-		content: '> SYSTEM.LOG: TELEMETRY';
+	/* The telemetry slot does not print the SYSTEM.LOG strip: its own Aqua header badge is
+	   the title, and two bars stacked would read as two panels. The brutalist frame and
+	   pinstripe stay, so the Aqua well reads as an instrument mounted in the black panel. */
+	.reader .prose :global(.chapter .console-slot.telemetry)::before {
+		content: none;
 	}
 
-	.reader.crt .prose :global(.console-slot > .exercise:only-child) {
+	.reader .prose :global(.chapter .console-slot.telemetry) {
+		padding: 14px;
+	}
+
+	.reader .prose :global(.console-slot > .exercise:only-child) {
 		margin-top: 0;
 	}
 
-	.reader.crt .prose :global(.console-slot .scene-col) {
+	.reader .prose :global(.console-slot .scene-col) {
 		background: #0a0e17;
 	}
 
-	.reader.crt .prose :global(.chapter .spine) {
+	.reader .prose :global(.chapter .spine) {
 		display: none;
 	}
 
 	/* 7. Recessed dark 8-bit code editor well inside the Aqua card. */
-	.reader.crt .prose :global(.editor-wrapper),
-	.reader.crt .prose :global(.console-slot .sandbox-embed .frame) {
+	.reader .prose :global(.editor-wrapper),
+	.reader .prose :global(.console-slot .sandbox-embed .frame) {
 		position: relative;
 		background: #0a0e17;
 		border: 2px solid #000000;
 		box-shadow: 4px 4px 0px #000000;
 	}
 
-	.reader.crt .prose :global(.editor-wrapper)::after,
-	.reader.crt .prose :global(.console-slot .sandbox-embed .frame)::after {
+	.reader .prose :global(.editor-wrapper)::after,
+	.reader .prose :global(.console-slot .sandbox-embed .frame)::after {
 		content: '';
 		position: absolute;
 		inset: 0;
@@ -719,7 +876,9 @@
 		background: repeating-linear-gradient(135deg, #ffb000 0 10px, #0a0a0a 10px 20px);
 	}
 
-	:global(html[data-crt='on']) .prose :global(.trap) {
+	/* The trap is a paper card with its own ink, so it keeps black text in both themes
+	   rather than inheriting the window's. */
+	.prose :global(.trap) {
 		color: #000000;
 	}
 
@@ -754,7 +913,12 @@
 	/* `.window-content` already supplies the padding, so the reader must not add a second
 	   inset on top of it: doing both cost ~110px of measure at 1440px and left the prose at
 	   42 characters a line, below the 45–75ch reading range. */
+	/* The reader is the paper the window shows. It owns the surface rather than letting
+	   the window's own fill show through, so the lesson reads the same in light and in
+	   dark no matter how much content a given week happens to have. */
 	.reader {
+		background: var(--color-paper);
+		color: var(--color-ink);
 		padding: 0 0 16px;
 	}
 
@@ -1217,12 +1381,12 @@
 	   on-black palette — but it takes its surface from `--color-ink` and its bare text from
 	   `--color-paper`, which the palette now sets to alabaster. Pinning the panel back to
 	   the editor well's surface and ink inside the window is what makes it readable. */
-	.reader.crt .prose :global(.predict .snippet) {
+	.reader .prose :global(.predict .snippet) {
 		background: #0a0e17;
 		color: #f1f1f1;
 	}
 
-	.reader.crt .prose :global(.predict .snippet .snippet-code) {
+	.reader .prose :global(.predict .snippet .snippet-code) {
 		color: #f1f1f1 !important;
 	}
 
