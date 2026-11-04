@@ -20,6 +20,8 @@
 	const EMBLEM_HEAD = { x: 1051.5 / 1200, y: 814 / 1607 };
 	/** Cards finish arriving this long after the dock starts; only then is the flag cleared. */
 	const CARDS_MS = 420;
+	/** The window exit. Must match the 0.3s transition in the stylesheet. */
+	const WINDOW_ANIM_MS = 300;
 
 	let overlay = $state<HTMLDivElement | null>(null);
 	let wakeCanvas = $state<HTMLCanvasElement | null>(null);
@@ -132,9 +134,37 @@
 		window.setTimeout(endBoot, BOOT_HOLD_MS + BOOT_FADE_MS);
 	});
 
-	/** The red and yellow lights: the README leaves the desk and the index is behind it. */
+	/**
+	 * The red and yellow lights both leave the desk, but they are different verbs: red
+	 * shuts the document (it shrinks away), yellow hands the desk over (it drops out of
+	 * sight toward the dock). Each plays its own exit and only then routes, so the
+	 * animation is seen rather than cut off by the navigation.
+	 */
+	let exit = $state<'idle' | 'closing' | 'minimizing'>('idle');
+
+	/** Reduced motion gets the destination, not a 300ms wait for a transition it opted out of. */
+	function exitsAnimated(): boolean {
+		return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	}
+
+	function leaveDesktop(kind: 'closing' | 'minimizing'): void {
+		if (exit !== 'idle' || entering) return;
+		if (!exitsAnimated()) {
+			void goto('/dashboard');
+			return;
+		}
+		exit = kind;
+		window.setTimeout(() => void goto('/dashboard'), WINDOW_ANIM_MS);
+	}
+
+	/** The red light: the README is a document, so it shrinks in place and fades. */
 	function close(): void {
-		void goto('/dashboard');
+		leaveDesktop('closing');
+	}
+
+	/** The yellow light: the document drops away toward the dock. */
+	function minimize(): void {
+		leaveDesktop('minimizing');
 	}
 
 	async function enter(event: MouseEvent): Promise<void> {
@@ -225,13 +255,18 @@
      work surface, with its own chrome, its own scroll box, and an action bar at its
      foot. The desktop, the menu bar and the dock belong to the layout. -->
 <div class="desktop">
-	<section class="mac-window" aria-labelledby="readme-title">
+	<section
+		class="mac-window"
+		class:closing={exit === 'closing'}
+		class:minimized={exit === 'minimizing'}
+		aria-labelledby="readme-title"
+	>
 		<div class="mac-titlebar">
 			<span class="mac-lights">
 				<button type="button" class="light red" aria-label="Close — go to the desktop" title="Close" onclick={close}>
 					<span class="mark" aria-hidden="true">×</span>
 				</button>
-				<button type="button" class="light yellow" aria-label="Minimise — go to the desktop" title="Minimise" onclick={close}>
+				<button type="button" class="light yellow" aria-label="Minimise — go to the desktop" title="Minimise" onclick={minimize}>
 					<span class="mark" aria-hidden="true">−</span>
 				</button>
 				<button type="button" class="light green" aria-label="Enter the desktop" title="Enter the desktop" onclick={close}>
@@ -315,12 +350,6 @@
 			{/if}
 		</div>
 
-		<!-- The action bar: a document viewer's footer. Close leaves the README; Enter
-		     takes the desktop over, through the snake warp. -->
-		<div class="mac-footer">
-			<button type="button" class="mac-btn" onclick={close}>[ Close ]</button>
-			<a class="mac-btn primary" href="/dashboard" onclick={enter}>[ Enter the Desktop → ]</a>
-		</div>
 	</section>
 </div>
 
@@ -356,6 +385,32 @@
 		overflow: hidden;
 		background: var(--color-paper);
 		box-shadow: var(--mac-window-shadow);
+		transform-origin: 50% 100%;
+		transition:
+			transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+			opacity 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+
+	/* The red light. A document shrinks in place as it is put away, so the scale is
+	   small and the fade carries most of the exit. */
+	.mac-window.closing {
+		transform: scale(0.9);
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	/* The yellow light. macOS minimises toward the Dock, which is at the foot of the
+	   screen: the window drops and shrinks at the same time. */
+	.mac-window.minimized {
+		transform: translateY(50vh) scale(0.2);
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.mac-window {
+			transition: none;
+		}
 	}
 
 	.mac-titlebar {
@@ -404,8 +459,10 @@
 		flex: none;
 	}
 
-	/* The Aqua lights: 12px discs, the glyph revealed only on hover so the chrome
-	   stays quiet until it is asked to do something. */
+	/* The Aqua lights: 12px glass beads, the glyph revealed only on hover so the chrome
+	   stays quiet until it is asked to do something. The bead reads as glass because the
+	   body is a radial gradient lit from upper left, the drop shadow lifts it off the
+	   pinstripes, and the inset pair curves the top and bottom lips away from the eye. */
 	.light {
 		position: relative;
 		display: grid;
@@ -415,20 +472,42 @@
 		padding: 0;
 		border: 0;
 		border-radius: 50%;
-		box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.35);
+		box-shadow:
+			0 1px 2px rgba(0, 0, 0, 0.35),
+			0 0 0 0.5px rgba(0, 0, 0, 0.22),
+			inset 0 1px 1.5px rgba(255, 255, 255, 0.95),
+			inset 0 -1.5px 2px rgba(0, 0, 0, 0.3);
 		cursor: pointer;
 	}
 
+	/* The specular hotspot and the rim bounce, drawn as two overlays so every colour of
+	   light shares one finish. */
+	.light::before {
+		content: '';
+		position: absolute;
+		top: 1px;
+		left: 2px;
+		width: 6px;
+		height: 4px;
+		border-radius: 50%;
+		background: radial-gradient(
+			ellipse at center,
+			rgba(255, 255, 255, 0.95) 0%,
+			rgba(255, 255, 255, 0.1) 85%
+		);
+		pointer-events: none;
+	}
+
 	.light.red {
-		background: #ff5f57;
+		background: radial-gradient(circle at 50% 60%, #ff5f57 0%, #e0443e 100%);
 	}
 
 	.light.yellow {
-		background: #febc2e;
+		background: radial-gradient(circle at 50% 60%, #febc2e 0%, #e0a01c 100%);
 	}
 
 	.light.green {
-		background: #28c840;
+		background: radial-gradient(circle at 50% 60%, #28c840 0%, #1e9e33 100%);
 	}
 
 	.light .mark {
@@ -464,77 +543,6 @@
 		overscroll-behavior: contain;
 		padding: clamp(20px, 3vw, 40px);
 		background: var(--color-paper);
-	}
-
-	.mac-footer {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 10px;
-		flex: none;
-		padding: 12px clamp(14px, 2vw, 20px);
-		border-top: 1px solid rgba(0, 0, 0, 0.14);
-		background: rgba(0, 0, 0, 0.035);
-		font-family: var(--mac-ui);
-	}
-
-	/* Aqua buttons are a hairline rim around a light vertical gradient, not a flat fill:
-	   the sheen is what separates them from the footer rather than a black outline. */
-	.mac-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		height: 30px;
-		padding: 0 16px;
-		border: 0;
-		border-radius: 7px;
-		background: linear-gradient(to bottom, #fdfdfd, #e4e4e4);
-		box-shadow:
-			inset 0 0 0 0.5px rgba(0, 0, 0, 0.2),
-			0 1px 2px rgba(0, 0, 0, 0.1);
-		font-family: var(--mac-ui);
-		font-size: 13px;
-		font-weight: 500;
-		line-height: 1;
-		color: var(--mac-aqua-ink);
-		text-decoration: none;
-		white-space: nowrap;
-		cursor: pointer;
-	}
-
-	.mac-btn:hover,
-	.mac-btn:focus-visible {
-		background: linear-gradient(to bottom, #f5f5f5, #dbdbdb);
-	}
-
-	.mac-btn:active {
-		background: linear-gradient(to bottom, #d8d8d8, #e2e2e2);
-	}
-
-	.mac-btn.primary {
-		background: linear-gradient(to bottom, #4ba3ff, var(--mac-blue));
-		box-shadow:
-			inset 0 0 0 0.5px rgba(0, 0, 0, 0.18),
-			0 1px 2px rgba(0, 0, 0, 0.18);
-		color: #ffffff;
-	}
-
-	.mac-btn.primary:hover,
-	.mac-btn.primary:focus-visible {
-		background: linear-gradient(to bottom, #429bfb, #2f8bee);
-	}
-
-	.mac-btn.primary:active {
-		background: linear-gradient(to bottom, #2a80dc, #358fe8);
-	}
-
-	.mac-btn:focus-visible {
-		outline: 2px solid var(--mac-blue);
-		outline-offset: 2px;
-	}
-
-	.mac-btn.primary:focus-visible {
-		outline-color: var(--mac-aqua-ink);
 	}
 
 	/* Flat print: the paper and typography carry the composition without a lighting effect. */
@@ -906,14 +914,6 @@
 
 		.mac-window {
 			border-radius: 10px;
-		}
-
-		.mac-footer {
-			justify-content: stretch;
-		}
-
-		.mac-btn {
-			flex: 1;
 		}
 	}
 

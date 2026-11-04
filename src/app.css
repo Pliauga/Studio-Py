@@ -95,10 +95,13 @@
 	--mac-menubar-bg: rgba(240, 240, 240, 0.85);
 	--mac-window-bg: #f4f6f9;
 	--mac-ui: -apple-system, BlinkMacSystemFont, 'Inter', 'Inter Fallback', system-ui, sans-serif;
-	/* One shadow for every window: a hairline edge, then a deep soft drop. */
+	/* One shadow for every window: a wide soft drop for distance, a hairline edge that
+	   keeps the frame crisp against the wallpaper, and a top inner highlight so the
+	   surface reads as lit rather than flat. */
 	--mac-window-shadow:
-		0 0 0 0.5px rgba(0, 0, 0, 0.3),
-		0 25px 70px rgba(0, 0, 0, 0.55);
+		0 26px 70px 10px rgba(0, 0, 0, 0.45),
+		0 0 0 1px rgba(0, 0, 0, 0.28),
+		inset 0 1px 0 rgba(255, 255, 255, 0.9);
 	/* The Aqua pinstripe pair. It is the only part of the shell that has to move with the
 	   theme, because it is a surface rather than a finish — see `.aqua-pinstripes`. */
 	--aqua-pinstripe-1: #ffffff;
@@ -109,6 +112,17 @@
 	--aqua-stripe-1: #ffffff;
 	--aqua-stripe-2: #f1f5fa;
 	--aqua-badge-ink: #173860;
+	/* The four-stop Aqua header badge, exposed as tokens so the lesson panels can wear the
+	   same finish the telemetry component uses without duplicating the gradient. */
+	--aqua-header-badge-gradient: linear-gradient(
+		to bottom,
+		#dbe9f6 0%,
+		#a6cbf0 49%,
+		#8ab9e6 51%,
+		#b0d3f7 100%
+	);
+	--aqua-header-badge-lip: rgba(255, 255, 255, 0.9);
+	--aqua-well-edge: #8e9092;
 }
 
 /*
@@ -150,6 +164,15 @@
 	--aqua-stripe-1: #202020;
 	--aqua-stripe-2: #282828;
 	--aqua-badge-ink: #dce9f7;
+	--aqua-header-badge-gradient: linear-gradient(
+		to bottom,
+		#3a4a5c 0%,
+		#2b3948 49%,
+		#22303d 51%,
+		#33424f 100%
+	);
+	--aqua-header-badge-lip: rgba(255, 255, 255, 0.16);
+	--aqua-well-edge: #3d3d3d;
 }
 
 @font-face {
@@ -535,20 +558,30 @@ select {
 
 /* The traffic lights: a glass disc lit from the top, the glyph arriving on hover. The
    caller positions them; this only draws the bead. */
+/* A glass bead, not a coloured dot. Three layers do the work: the coloured body is a
+   radial gradient whose light source is up and to the left, the outer shadow drops it
+   onto the pinstriped bar, and an inset highlight along the top lip plus an inset
+   shadow along the bottom lip curve the surface away from the viewer. */
 .aqua-traffic-light {
 	width: 13px;
 	height: 13px;
 	border-radius: 50%;
 	position: relative;
 	box-shadow:
-		0 1px 1px rgba(0, 0, 0, 0.3),
-		inset 0 1px 1px rgba(255, 255, 255, 0.9);
+		0 1px 2px rgba(0, 0, 0, 0.35),
+		0 0 0 0.5px rgba(0, 0, 0, 0.18),
+		inset 0 1px 1.5px rgba(255, 255, 255, 0.95),
+		inset 0 -1.5px 2px rgba(0, 0, 0, 0.35);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
+	/* The bead is small, so the specular sheen has to be drawn rather than implied. */
+	background-color: transparent;
 }
 
+/* The specular hotspot: a soft white capsule in the upper third, which is what reads as
+   gloss on a bead this size. */
 .aqua-traffic-light::before {
 	content: '';
 	position: absolute;
@@ -556,22 +589,45 @@ select {
 	left: 2px;
 	width: 7px;
 	height: 4px;
-	background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.1) 85%);
+	background: radial-gradient(
+		ellipse at center,
+		rgba(255, 255, 255, 0.95) 0%,
+		rgba(255, 255, 255, 0.1) 85%
+	);
 	border-radius: 50%;
+	pointer-events: none;
+}
+
+/* A second, wider halo under the hotspot: the light that bounces back off the rim. */
+.aqua-traffic-light::after {
+	content: '';
+	position: absolute;
+	inset: 1px;
+	border-radius: 50%;
+	background: radial-gradient(
+		circle at 34% 26%,
+		rgba(255, 255, 255, 0.55) 0%,
+		rgba(255, 255, 255, 0.12) 42%,
+		transparent 62%
+	);
+	pointer-events: none;
 }
 
 .aqua-close {
-	background: radial-gradient(circle at 50% 60%, #ff3b30 0%, #e01d12 100%);
+	background:
+		radial-gradient(circle at 50% 60%, #ff3b30 0%, #e01d12 100%);
 	border: 1px solid #b81208;
 }
 
 .aqua-minimize {
-	background: radial-gradient(circle at 50% 60%, #ffcc00 0%, #e6a100 100%);
+	background:
+		radial-gradient(circle at 50% 60%, #ffcc00 0%, #e6a100 100%);
 	border: 1px solid #b87b00;
 }
 
 .aqua-zoom {
-	background: radial-gradient(circle at 50% 60%, #34c759 0%, #20993d 100%);
+	background:
+		radial-gradient(circle at 50% 60%, #34c759 0%, #20993d 100%);
 	border: 1px solid #14732a;
 }
 

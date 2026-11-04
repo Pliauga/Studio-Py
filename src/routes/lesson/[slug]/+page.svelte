@@ -49,17 +49,53 @@
 		openWindows.isMinimized = false;
 	});
 
-	/** The red light: the window is gone, and the desktop forgets it. */
-	function closeWindow(): void {
-		openWindows.currentLesson = null;
-		openWindows.isMinimized = false;
-		void goto('/dashboard');
+	/** The window exit in flight. `idle` means the window is on screen. */
+	let exit = $state<'idle' | 'closing' | 'minimizing'>('idle');
+
+	/** Reduced motion goes straight to the desktop instead of waiting out a transition. */
+	function exitsAnimated(): boolean {
+		return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	}
 
-	/** The yellow light: the window leaves the screen but keeps its taskbar tab. */
+	/** Play the exit, then route. Routing first would cut the animation off, which is
+	    the whole complaint this fixes: the window must be seen to leave. */
+	function leave(kind: 'closing' | 'minimizing', after: () => void, before: () => void): void {
+		if (exit !== 'idle') return;
+		if (!exitsAnimated()) {
+			before();
+			after();
+			return;
+		}
+		exit = kind;
+		window.setTimeout(() => {
+			before();
+			after();
+		}, WINDOW_ANIM_MS);
+	}
+
+	const WINDOW_ANIM_MS = 300;
+
+	/** The red light: the window shrinks away, and the desktop forgets it. */
+	function closeWindow(): void {
+		leave(
+			'closing',
+			() => void goto('/dashboard'),
+			() => {
+				openWindows.currentLesson = null;
+				openWindows.isMinimized = false;
+			}
+		);
+	}
+
+	/** The yellow light: the window drops toward the Dock but keeps its taskbar tab. */
 	function minimizeWindow(): void {
-		openWindows.isMinimized = true;
-		void goto('/dashboard');
+		leave(
+			'minimizing',
+			() => void goto('/dashboard'),
+			() => {
+				openWindows.isMinimized = true;
+			}
+		);
 	}
 
 	/** The green light: the window either fills the desktop or returns to its frame. */
@@ -114,7 +150,12 @@
 </svelte:head>
 
 <div class="desktop" class:maximized>
-	<div class="os-window" class:maximized>
+	<div
+		class="os-window"
+		class:maximized
+		class:closing={exit === 'closing'}
+		class:minimized={exit === 'minimizing'}
+	>
 		<div class="crt-scan on" aria-hidden="true"></div>
 		<div class="title-bar aqua-pinstripes">
 			<span class="aqua-traffic-group traffic">
@@ -348,6 +389,8 @@
 			top var(--duration-3) var(--ease-standard),
 			left var(--duration-3) var(--ease-standard),
 			border-radius var(--duration-3) var(--ease-standard),
+			box-shadow var(--duration-3) var(--ease-standard),
+			opacity var(--duration-3) var(--ease-standard),
 			transform var(--duration-3) var(--ease-standard);
 	}
 
@@ -515,18 +558,46 @@
 		outline-offset: 1px;
 	}
 
-	/* Maximised, the window fills the screen below the menu bar. The route surface
-	   already begins there, so it takes the whole box — the dock stays visible because
-	   a maximised app has not taken the desktop over. */
+	/* Maximised, the window fills the screen below the menu bar. `.desktop` already
+	   begins at the menubar's foot and is `100vh - 24px` tall, so filling it (top 0,
+	   height 100%) is what `top: 24px; height: calc(100vh - 24px)` means in viewport
+	   terms. Writing the viewport numbers here would offset the window a second time and
+	   push its foot 24px past the screen. */
 	.os-window.maximized {
 		top: 0;
 		left: 0;
 		width: 100vw;
-		height: 100%;
 		max-width: 100vw;
+		height: 100%;
 		border-radius: 0;
-		box-shadow: none;
+		/* A maximised window still sits on the desktop, so it keeps a shallower drop
+		   rather than losing its elevation entirely. */
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 		transform: none;
+	}
+
+	/* The red light: a document shrinks in place as it is put away. */
+	.os-window.closing {
+		transform: translateX(-50%) scale(0.9);
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	/* The yellow light: macOS minimises toward the Dock at the foot of the screen. */
+	.os-window.minimized {
+		transform: translateX(-50%) translateY(50vh) scale(0.2);
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	/* Both exit variants have to compose with the base `translateX(-50%)` that centres
+	   the window, so they restate it rather than replacing it. */
+	.os-window.maximized.closing {
+		transform: scale(0.9);
+	}
+
+	.os-window.maximized.minimized {
+		transform: translateY(50vh) scale(0.2);
 	}
 
 	/* The name is centred in the bar itself. The badge on the right is allowed to be wider
@@ -798,19 +869,13 @@
 
 		border-radius: 0;
 		border-bottom: 2px solid #000000;
-		background: linear-gradient(
-			180deg,
-			#ffffff 0%,
-			#ffffff 14%,
-			#66c2ff 14%,
-			#66c2ff 30%,
-			#0066ff 30%,
-			#0066ff 82%,
-			#0044aa 82%,
-			#0044aa 100%
-		);
-		color: #ffffff;
-		text-shadow: 1px 1px 0px #000000;
+		/* The Aqua header badge: four stops so the bar has a lit top lip, a horizon at
+		   the middle and a darker foot, which is what reads as a raised metal strip.
+		   The VT323 type and the hard 2px edge keep the brutalist core. */
+		background: var(--aqua-header-badge-gradient);
+		box-shadow: inset 0 1px 0 var(--aqua-header-badge-lip);
+		color: var(--aqua-badge-ink);
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
 	}
 
 	.reader .prose :global(.chapter .console-slot)::before {
@@ -831,6 +896,25 @@
 
 	.reader .prose :global(.chapter .console-slot.telemetry) {
 		padding: 14px;
+	}
+
+	/* Both instrument panels are wells cut into the paper rather than cards laid on top of
+	   it: the shadow is inset, so the surface reads as recessed and the Aqua header badge
+	   above it reads as the strip of metal in the opening. */
+	.reader .prose :global(.chapter .console-slot),
+	.reader .prose :global(.chapter .pin-inner) {
+		border: 1px solid var(--aqua-well-edge);
+		border-radius: 4px;
+		box-shadow:
+			inset 1px 1px 3px rgba(0, 0, 0, 0.28),
+			0 1px 0 rgba(255, 255, 255, 0.8);
+	}
+
+	/* The narrative well keeps the paper's own colour so running copy stays legible; only
+	   the frame is recessed. */
+	.reader .prose :global(.chapter .pin-inner) {
+		padding: 14px 16px;
+		background: var(--aqua-well);
 	}
 
 	.reader .prose :global(.console-slot > .exercise:only-child) {
@@ -1185,14 +1269,68 @@
 		flex: 0 0 auto;
 	}
 
+	/* An exercise slot is the IDE, and an IDE is a column with three bands: a fixed
+	   header, an editor that takes the remaining height and scrolls its own text, and a
+	   terminal pinned to a fixed height at the foot. Without the height cap the editor
+	   grows to fit its content, which pushes the terminal below the fold and makes the
+	   page scroll as one long sheet. */
+	.prose :global(.chapter .console-slot:has(> .exercise)) {
+		display: flex;
+		flex-direction: column;
+		/* The column is measured from the window, not the viewport: the lesson scrolls
+		   inside `.window-content`, so the usable height is the viewport less the menu
+		   bar, the window's 5vh offset, its two chrome bars, the content padding and the
+		   dock gutter. 158px is the sum of the fixed chrome (30px title bar, 34px toolbar,
+		   two 32px content paddings, both 1px borders). */
+		height: calc(100dvh - var(--mac-dock-gutter) - 5vh - 158px);
+		max-height: calc(100dvh - var(--mac-dock-gutter) - 5vh - 158px);
+		overflow: hidden;
+	}
+
 	.prose :global(.console-slot > .exercise:only-child) {
 		flex: 1 1 auto;
 		display: flex;
 		flex-direction: column;
+		min-height: 0;
 	}
 
-	.prose :global(.console-slot > .exercise:only-child .console-wrapper) {
+	/* The identity bar keeps its natural height; only the editor flexes. */
+	.prose :global(.console-slot .exercise > .head) {
+		flex: 0 0 auto;
+	}
+
+	/* The code editor: the band that absorbs the spare height, scrolling its own text
+	   rather than stretching the column. The floor keeps enough code visible to work in
+	   when the window is short; `min-height: 0` alone lets flex shrink it to nothing. */
+	.prose :global(.console-slot .exercise > .editor-wrapper) {
 		flex: 1 1 auto;
+		min-height: 130px;
+		overflow-y: auto;
+	}
+
+	/* The terminal: a fixed band, so it is always on screen and always the same size. */
+	.prose :global(.console-slot .exercise > .console-wrapper) {
+		flex: 0 0 auto;
+		height: 200px;
+		overflow-y: auto;
+	}
+
+	/* Inside the IDE column the bands stack tightly: the sheet margins that suit a print
+	   page waste vertical room the editor needs. */
+	.prose :global(.console-slot .exercise > .shadow-wrapper) {
+		margin-block: 10px;
+	}
+
+	.prose :global(.console-slot .exercise > .console-wrapper) {
+		margin-block: 0 10px;
+	}
+
+	/* A short viewport cannot give the terminal 200px and the editor a usable band, so
+	   the terminal gives ground first. */
+	@media (max-height: 820px) {
+		.prose :global(.console-slot .exercise > .console-wrapper) {
+			height: 150px;
+		}
 	}
 
 	.prose :global(.console-slot .sandbox-embed),
