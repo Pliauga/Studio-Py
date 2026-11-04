@@ -85,9 +85,9 @@
 	--mac-menubar-h: 24px;
 	/* The dock floats clear of the bottom edge; a window reserves this much. */
 	--mac-dock-gutter: 100px;
-	--color-desktop: #f4e05e;
-	/* The cutting-mat grid on the desktop: ink on the yellow board, light on black. */
-	--desktop-grid-ink: rgba(0, 0, 0, 0.07);
+	--color-desktop: #175497;
+	/* The cutting-mat grid is white over the Tiger blue wallpaper. */
+	--desktop-grid-ink: rgba(255, 255, 255, 1);
 	--mac-blue: #3b99fc;
 	/* The Aqua title bar: a light gradient, not a flat fill. */
 	--mac-titlebar-bg: linear-gradient(to bottom, #e8e8e8, #d4d4d4);
@@ -150,13 +150,13 @@
 	--syntax-function: #f1f1f1;
 	--syntax-number: #40f51a;
 	--syntax-comment: #777777;
-	--color-desktop: #0a0a0a;
+	--color-desktop: #07284f;
 	--mac-menubar-bg: rgba(20, 20, 20, 0.85);
 	--mac-window-bg: #121212;
 	--mac-titlebar-bg: linear-gradient(to bottom, #2a2a2a, #1a1a1a);
 	--mac-aqua-ink: #e8e8e8;
-	/* The desktop grid is ink-on-paper; on a black desktop it has to become light. */
-	--desktop-grid-ink: rgba(255, 255, 255, 0.07);
+	/* The desktop grid is white on the blue wallpaper in both themes. */
+	--desktop-grid-ink: rgba(255, 255, 255, 1);
 	/* A white pinstripe on a dark window would glare; the pair drops to graphite. */
 	--aqua-pinstripe-1: #2a2a2a;
 	--aqua-pinstripe-2: #232323;
@@ -680,7 +680,7 @@ select {
 /* The pill header that caps a well. The radius is square at the bottom so it sits
    flush against the table underneath. */
 .aqua-header-badge {
-	background: linear-gradient(to bottom, #dbe9f6 0%, #a6cbf0 49%, #8ab9e6 51%, #b0d3f7 100%);
+	background: var(--aqua-header-badge-gradient);
 	border: 1px solid #6b98c4;
 	border-radius: 4px 4px 0 0;
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);

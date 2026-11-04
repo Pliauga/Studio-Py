@@ -38,7 +38,7 @@
 	function syncThemeColor(next: Theme): void {
 		document
 			.querySelector('meta[name="theme-color"]')
-			?.setAttribute('content', next === 'dark' ? '#1a1a1a' : '#f4e05e');
+			?.setAttribute('content', next === 'dark' ? '#07284f' : '#175497');
 	}
 
 	// The menu bar clock is the machine's, not the page's: client-only, because the
@@ -335,7 +335,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<meta name="theme-color" content="#f4e05e" />
+	<meta name="theme-color" content="#175497" />
 	<!-- Cross-document moves (a reload, a shared link) animate with the same CSS the
 	     client-side moves below are wrapped in. -->
 	<style>
@@ -348,12 +348,12 @@
 <!--
 	THE DESKTOP
 
-	One continuous Aqua work surface. The grid and the yellow are the desktop; the
+	One continuous Aqua work surface. The grid and the blue swirl are the desktop; the
 	menu bar is pinned to its top edge and the dock to its bottom edge. Both are
 	siblings of the route content, so neither remounts when a route changes — a
 	window opening over the desktop never takes the desktop with it.
 -->
-<div class="mac-desktop">
+<div class="mac-desktop desktop-background">
 	<div class="desktop-grid" aria-hidden="true"></div>
 
 	<header class="mac-menubar">
@@ -402,7 +402,7 @@
 	<!-- The dock: the desktop's own window manager. The folder is the index, the
 	     terminal is the lesson the reader has open. It floats over the work surface
 	     and never unmounts, so a closing window leaves the dock behind. -->
-	<nav class="mac-dock" aria-label="Dock">
+	<nav class="mac-dock aqua-dock-shelf" aria-label="Dock">
 		<a
 			class="dock-icon"
 			class:running={onDashboard}
@@ -539,7 +539,16 @@
 		width: 100vw;
 		height: 100vh;
 		overflow: hidden;
-		background: var(--color-desktop);
+	}
+
+	.desktop-background {
+		background:
+			radial-gradient(circle at 50% 120%, rgba(26, 175, 255, 0.45) 0%, transparent 60%),
+			radial-gradient(circle at 15% 15%, rgba(135, 219, 255, 0.4) 0%, transparent 45%),
+			radial-gradient(circle at 85% 30%, rgba(0, 110, 220, 0.5) 0%, transparent 50%),
+			linear-gradient(135deg, #093769 0%, #175497 28%, #1f72b7 52%, #13467f 78%, #07284f 100%);
+		background-size: cover;
+		background-attachment: fixed;
 	}
 
 	/* The cutting-mat grid: faint enough to read over, regular enough that a window
@@ -552,6 +561,7 @@
 			linear-gradient(var(--desktop-grid-ink) 1px, transparent 1px),
 			linear-gradient(90deg, var(--desktop-grid-ink) 1px, transparent 1px);
 		background-size: 20px 20px;
+		opacity: 0.03;
 		pointer-events: none;
 	}
 
@@ -703,7 +713,7 @@
 
 	/* ---- the dock -------------------------------------------------------------------- */
 
-	.mac-dock {
+	.mac-dock.aqua-dock-shelf {
 		position: absolute;
 		inset: auto auto 10px 50%;
 		z-index: 150;

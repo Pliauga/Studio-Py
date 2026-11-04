@@ -13,18 +13,18 @@
 	]);
 
 	/**
-	 * The executable name a module wears on the desktop: the week, then its first
-	 * distinguishing word — W01_VARIABLES.exe. The full title stays in the accessible
+	 * The application name a module wears on the desktop: the week, then its first
+	 * distinguishing word — W01_VARIABLES.app. The full title stays in the accessible
 	 * name, so the file name is flavour without becoming the label a reader must decode.
 	 */
-	const exeName = (week: number, title: string) => {
+	const appName = (week: number, title: string) => {
 		const word =
 			title
 				.toUpperCase()
 				.replace(/[^A-Z0-9]+/g, ' ')
 				.split(' ')
 				.find((part) => part.length > 0 && !NOISE.has(part)) ?? 'LESSON';
-		return `W${pad(week)}_${word}.exe`;
+		return `W${pad(week)}_${word}.app`;
 	};
 
 	// Selection is the desktop's own idea of a cursor: one tile at a time, and the
@@ -66,7 +66,7 @@
 	<ul class="icons">
 		{#each MODULES as module (module.slug)}
 			{@const status = progress.statusOf(module.slug)}
-			{@const name = exeName(module.week, module.title)}
+			{@const name = appName(module.week, module.title)}
 			{@const cut = name.indexOf('_') + 1}
 			{@const ext = name.lastIndexOf('.')}
 			<li>
@@ -106,7 +106,7 @@
 
 					<!-- The name is one unbreakable token, so the only place a line may
 					     break is the week separator. The `<wbr>` marks that opportunity;
-					     without it every break falls mid-word (W02_CONDITIO / NALS.exe). -->
+					     without it every break falls mid-word (W02_CONDITIO / NALS.app). -->
 					<span class="filename" aria-hidden="true"
 						>{name.slice(0, cut)}<wbr />{name.slice(cut, ext)}<wbr />{name.slice(ext)}</span
 					>
@@ -161,8 +161,8 @@
 		border: 0;
 	}
 
-	/* The work surface. The layout owns the yellow and the grid; this route only has
-	   to keep its tiles clear of the menu bar above and the dock below. */
+	/* The layout owns the blue wallpaper and grid; this route keeps its tiles clear
+	   of the menu bar above and the dock below. */
 	.desk {
 		position: absolute;
 		inset: 0;
@@ -250,7 +250,7 @@
 	   it is. */
 	.filename {
 		/* The tile's inner width at its 108px column. The second line carries the module
-		   word plus the extension, and the widest of those (`ARCHITECTURE.exe`) measures
+		   word plus the extension, and the widest of those (`ARCHITECTURE.app`) measures
 		   97px at 10px, so the box has to be at least that wide to avoid breaking inside
 		   a word. */
 		width: 100px;
