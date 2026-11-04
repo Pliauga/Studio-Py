@@ -51,8 +51,11 @@
 		openWindows.isMinimized = false;
 	});
 
-	/** The window exit in flight. `idle` means the window is on screen. */
-	let exit = $state<'idle' | 'closing' | 'minimizing'>('idle');
+	/** The window exit in flight. `open` means the window is on screen. Maximising is a
+	    separate flag rather than a fourth state: a maximised window still has to be able to
+	    close, and folding it into one union would snap it back to its frame the instant the
+	    exit started, so the scale-down would play from the wrong geometry. */
+	let windowState = $state<'open' | 'closing' | 'minimizing'>('open');
 
 	/** Reduced motion goes straight to the desktop instead of waiting out a transition. */
 	function exitsAnimated(): boolean {
@@ -62,20 +65,26 @@
 	/** Play the exit, then route. Routing first would cut the animation off, which is
 	    the whole complaint this fixes: the window must be seen to leave. */
 	function leave(kind: 'closing' | 'minimizing', after: () => void, before: () => void): void {
-		if (exit !== 'idle') return;
+		if (windowState !== 'open') return;
 		if (!exitsAnimated()) {
 			before();
 			after();
 			return;
 		}
-		exit = kind;
-		window.setTimeout(() => {
-			before();
-			after();
-		}, WINDOW_ANIM_MS);
+		windowState = kind;
+		window.setTimeout(
+			() => {
+				before();
+				after();
+			},
+			kind === 'closing' ? CLOSE_MS : MINIMIZE_MS
+		);
 	}
 
-	const WINDOW_ANIM_MS = 300;
+	/** The red light's exit, and the yellow light's drop toward the Dock. Each is stated
+	    once and read by the stylesheet as the matching transition duration. */
+	const CLOSE_MS = 300;
+	const MINIMIZE_MS = 400;
 
 	/** The red light: the window shrinks away, and the desktop forgets it. */
 	function closeWindow(): void {
@@ -102,6 +111,7 @@
 
 	/** The green light: the window either fills the desktop or returns to its frame. */
 	function toggleMaximize(): void {
+		if (windowState !== 'open') return;
 		maximized = !maximized;
 	}
 
@@ -111,8 +121,10 @@
 		{ tone: 'green', cls: 'aqua-zoom', mark: '+', label: 'Maximise window', act: toggleMaximize }
 	] as const;
 
-	/** The toolbar's segmented control. The panes are one document, so the choice is a
-	    view preference rather than a route: it is held here until the reader leaves. */
+	/** The toolbar's pane filter. The lesson arrives from the content pipeline as one
+	    document — chapters are `split` when they carry a console and `wide` when they do
+	    not — so this is a view over that document, not a second layout: `data-pane` on the
+	    scroll box decides which wells are shown, and the stylesheet does the rest. */
 	const panes = [
 		{ id: 'all', label: 'All Panes' },
 		{ id: 'narrative', label: 'Narrative' },
@@ -121,13 +133,6 @@
 	] as const;
 
 	let activePane = $state<string>('all');
-	let query = $state('');
-
-	/** The toolbar's Execute: it is the window's own Run affordance, so it reaches the
-	    lesson's first exercise rather than re-implementing the run. */
-	function runExercise(): void {
-		article?.querySelector<HTMLButtonElement>('[data-testid="run"]')?.click();
-	}
 
 	// Reading the article is what marks a lesson opened; `complete()` is the
 	// only explicit act, so the dashboard never overstates progress.
@@ -155,8 +160,8 @@
 	<div
 		class="os-window"
 		class:maximized
-		class:closing={exit === 'closing'}
-		class:minimized={exit === 'minimizing'}
+		class:closing={windowState === 'closing'}
+		class:minimizing={windowState === 'minimizing'}
 	>
 		<div class="crt-scan on" aria-hidden="true"></div>
 		<div class="title-bar aqua-pinstripes">
@@ -192,23 +197,8 @@
 					</button>
 				{/each}
 			</div>
-
-			<div class="toolbar-right">
-				<label class="aqua-capsule-input">
-					<svg class="capsule-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-						<circle cx="5.2" cy="5.2" r="3.6" />
-						<path d="M7.9 7.9 10.6 10.6" />
-					</svg>
-					<span class="sr-only">Search this lesson</span>
-					<input type="search" placeholder="Search waypoints…" bind:value={query} />
-				</label>
-				<button type="button" class="aqua-btn-blue execute" onclick={runExercise}>
-					<span class="execute-glyph" aria-hidden="true">▶</span>
-					Execute
-				</button>
-			</div>
 		</div>
-		<div class="window-content" data-mac-scroll bind:this={scroller}>
+		<div class="window-content" data-pane={activePane} data-mac-scroll bind:this={scroller}>
 			<main class="reader">
 				<div class="sheet">
 		<header class="hero">
@@ -479,98 +469,22 @@
 		white-space: nowrap;
 	}
 
-	.toolbar-right {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		min-width: 0;
-	}
-
-	.toolbar-right :global(.aqua-capsule-input) {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		min-width: 0;
-		width: 190px;
-		height: 24px;
-		padding: 0 10px;
-	}
-
-	.toolbar-right :global(.aqua-capsule-input input) {
-		width: 100%;
-		font-family: var(--mac-ui);
-		font-size: 11.5px;
-		/* The default search decoration is a second affordance next to the glyph. */
-		-webkit-appearance: none;
-		appearance: none;
-	}
-
-	.toolbar-right :global(.aqua-capsule-input input)::-webkit-search-cancel-button {
-		display: none;
-	}
-
-	.capsule-glyph {
-		flex: none;
-		width: 11px;
-		height: 11px;
-		fill: none;
-		stroke: #6b7480;
-		stroke-width: 1.3;
-		stroke-linecap: round;
-	}
-
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		margin: -1px;
-		padding: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-		border: 0;
-	}
-
-	/* The Aqua jelly pill: padding and type only, so the gradient and its sheen stay the
-	   shared class's business. */
-	.execute {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 3px 13px;
-		font-family: var(--mac-ui);
-		font-size: 11.5px;
-		font-weight: 600;
-		letter-spacing: 0.01em;
-		cursor: pointer;
-	}
-
-	.execute-glyph {
-		font-size: 8px;
-		line-height: 1;
-	}
-
-	.execute:focus-visible {
-		outline: 2px solid var(--mac-blue);
-		outline-offset: 2px;
-	}
-
 	.panes :global(.aqua-segmented-btn:focus-visible) {
 		outline: 2px solid var(--mac-blue);
 		outline-offset: 1px;
 	}
 
-	/* Maximised, the window fills the screen below the menu bar. `.desktop` already
-	   begins at the menubar's foot and is `100vh - 24px` tall, so filling it (top 0,
-	   height 100%) is what `top: 24px; height: calc(100vh - 24px)` means in viewport
-	   terms. Writing the viewport numbers here would offset the window a second time and
-	   push its foot 24px past the screen. */
+	/* Maximised, the window fills the screen below the menu bar — but not behind the Dock:
+	   a maximised macOS window ends at the Dock's top edge, not at the bottom of the glass.
+	   `.desktop` already begins at the menubar's foot and is the full remaining height, so
+	   `height: 100% - gutter` is the visible frame, and it matches the rest position the
+	   window returns to (the same gutter is what places its foot there now). */
 	.os-window.maximized {
 		top: 0;
 		left: 0;
 		width: 100vw;
 		max-width: 100vw;
-		height: 100%;
+		height: calc(100% - var(--mac-dock-gutter));
 		border-radius: 0;
 		/* A maximised window still sits on the desktop, so it keeps a shallower drop
 		   rather than losing its elevation entirely. */
@@ -578,27 +492,37 @@
 		transform: none;
 	}
 
-	/* The red light: a document shrinks in place as it is put away. */
+	/* The red light: a document shrinks in place as it is put away. The duration is
+	   restated here rather than inherited, because the exit has to be over before the route
+	   swaps — the base transition also animates geometry the exit does not touch. */
 	.os-window.closing {
-		transform: translateX(-50%) scale(0.9);
+		transform: translateX(-50%) scale(0.85);
 		opacity: 0;
 		pointer-events: none;
+		transition:
+			transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+			opacity 300ms ease-out;
 	}
 
-	/* The yellow light: macOS minimises toward the Dock at the foot of the screen. */
-	.os-window.minimized {
+	/* The yellow light: macOS minimises toward the Dock at the foot of the screen, which is
+	   a longer throw than the close, so it gets the longer beat. */
+	.os-window.minimizing {
 		transform: translateX(-50%) translateY(50vh) scale(0.2);
 		opacity: 0;
 		pointer-events: none;
+		transition:
+			transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1),
+			opacity 400ms ease-out;
 	}
 
 	/* Both exit variants have to compose with the base `translateX(-50%)` that centres
-	   the window, so they restate it rather than replacing it. */
+	   the window, so they restate it rather than replacing it. A maximised window has
+	   already dropped that offset (`transform: none`), so its exits are the bare moves. */
 	.os-window.maximized.closing {
-		transform: scale(0.9);
+		transform: scale(0.85);
 	}
 
-	.os-window.maximized.minimized {
+	.os-window.maximized.minimizing {
 		transform: translateY(50vh) scale(0.2);
 	}
 
@@ -646,12 +570,8 @@
 			font-size: 11.5px;
 		}
 
-		/* The toolbar keeps both tiers but drops what a phone cannot use: the search field
-		   would compress to an unlabelled sliver, and the segmented pills would scroll. */
-		.toolbar-right :global(.aqua-capsule-input) {
-			display: none;
-		}
-
+		/* The toolbar keeps the pane filter but shrinks it: four pills at full size would
+		   scroll instead of fitting a phone's bar. */
 		.panes :global(.aqua-segmented-btn) {
 			padding: 3px 8px;
 			font-size: 10.5px;
@@ -664,8 +584,8 @@
 	}
 
 	@media (max-width: 560px) {
-		/* Below a phone's width the segmented control and the Execute pill cannot both
-		   fit on one line, so the toolbar wraps instead of clipping either. */
+		/* Below a phone's width the four pills still overflow a single line, so the toolbar
+		   wraps rather than clipping the last one. */
 		.window-toolbar {
 			flex-wrap: wrap;
 			row-gap: 6px;
@@ -1798,4 +1718,52 @@
 			text-align: left;
 		}
 	}
+
+	/* ---- the pane filter --------------------------------------------------------------
+	   The segmented control in the toolbar is a view over one document, not a second
+	   layout. `All Panes` is the pipeline's own output untouched; the other three narrow
+	   the same grid by hiding what they do not name, so no chapter is reflowed and no
+	   content is rebuilt. A chapter whose console is hidden becomes single-column at full
+	   measure, which is the same treatment the `wide` chapters already get. */
+
+	/* Narrative only: the consoles go, the field-guide column takes the whole chapter. */
+	.window-content[data-pane='narrative'] :global(.chapter.split) {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			'pin'
+			'body';
+	}
+
+	.window-content[data-pane='narrative'] :global(.chapter .console-slot) {
+		display: none;
+	}
+
+	/* Narrative alone has lost its seam, so the spine has nothing left to divide. */
+	.window-content[data-pane='narrative'] :global(.chapter .spine) {
+		display: none;
+	}
+
+	/* Telemetry only: the exercise consoles go, the readouts stay. A chapter with neither
+	   — plain narrative — is not part of the view and drops out entirely. */
+	.window-content[data-pane='telemetry'] :global(.console-slot:not(.telemetry)) {
+		display: none;
+	}
+
+	.window-content[data-pane='telemetry'] :global(.chapter:not(:has(.telemetry))) {
+		display: none;
+	}
+
+	/* The row a telemetry chapter keeps `pin` and `body` in, with the slot beside them. */
+	.window-content[data-pane='telemetry'] :global(.chapter.split:has(.telemetry)) {
+		grid-template-columns: minmax(350px, 5fr) minmax(0, 7fr);
+		grid-template-areas:
+			'pin slot'
+			'body slot';
+	}
+
+	/* Terminal only: the readouts go and the exercise consoles stay. */
+	.window-content[data-pane='terminal'] :global(.console-slot.telemetry) {
+		display: none;
+	}
+
 </style>

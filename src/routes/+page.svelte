@@ -2,36 +2,12 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Component } from 'svelte';
-	import {
-		CELL_PX,
-		SNAKE_CELLS,
-		activate,
-		createLayers,
-		dock,
-		travel,
-		type Cell
-	} from '#lib/transition/snake-warp.ts';
 
-	/** Where the emblem's snake head sits inside the print, as fractions of the image.
-	 *  Measured against the current artwork (1888×2218), not carried over: the green snake's
-	 *  centroid is at px (1476, 1066). The old poster's fraction lands on the figure's
-	 *  shoulder in this artwork, so the warp would fire from the wrong place. */
-	const EMBLEM_HEAD = { x: 1476 / 1888, y: 1066 / 2218 };
-	/** Cards finish arriving this long after the dock starts; only then is the flag cleared. */
-	const CARDS_MS = 420;
 	/** The window exit. Must match the 0.3s transition in the stylesheet. */
 	const WINDOW_ANIM_MS = 300;
 
-	let overlay = $state<HTMLDivElement | null>(null);
-	let wakeCanvas = $state<HTMLCanvasElement | null>(null);
-	let spriteCanvas = $state<HTMLCanvasElement | null>(null);
-	let poster = $state<HTMLImageElement | null>(null);
-	let entering = false;
-
 	let HalftonePlate = $state.raw<Component<{ reduceMotion: boolean }> | null>(null);
 	let reduceMotion = $state(false);
-
-	const toCell = (px: number) => Math.round(px / CELL_PX);
 
 	/** The boot overlay is an after-paint flourish: it never gates the poster's HTML. */
 	const BOOT_KEY = 'studio-py:booted';
@@ -152,7 +128,7 @@
 	}
 
 	function leaveDesktop(kind: 'closing' | 'minimizing'): void {
-		if (exit !== 'idle' || entering) return;
+		if (exit !== 'idle') return;
 		if (!exitsAnimated()) {
 			void goto('/dashboard');
 			return;
@@ -171,70 +147,20 @@
 		leaveDesktop('minimizing');
 	}
 
-	async function enter(event: MouseEvent): Promise<void> {
+	/** The call to action hands the desk over exactly as the red light does: the same
+	 *  mac-window exit, then the route. The anchor keeps its href so the desktop can still
+	 *  be opened in a new tab; a plain left click is intercepted. */
+	function launch(event: MouseEvent): void {
 		if (
-			event instanceof MouseEvent &&
-			(event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+			event.button !== 0 ||
+			event.metaKey ||
+			event.ctrlKey ||
+			event.shiftKey ||
+			event.altKey
 		)
 			return;
 		event.preventDefault();
-		if (entering) return;
-		entering = true;
-
-		const anchor = event.currentTarget instanceof HTMLAnchorElement ? event.currentTarget : null;
-		const destination = anchor ? new URL(anchor.href).pathname : '/dashboard';
-		const cover = overlay;
-		const layers = cover && wakeCanvas && spriteCanvas ? createLayers(wakeCanvas, spriteCanvas) : null;
-		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !cover || !poster || !layers) {
-			await goto(destination);
-			return;
-		}
-
-		const image = poster.getBoundingClientRect();
-		const spawn: Cell = {
-			x: Math.round((image.left + image.width * EMBLEM_HEAD.x) / CELL_PX - SNAKE_CELLS / 2),
-			y: Math.round((image.top + image.height * EMBLEM_HEAD.y) / CELL_PX - SNAKE_CELLS / 2)
-		};
-
-		// Phases 1-2: the emblem wakes, then the snake zig-zags out and the poster dissolves.
-		await activate(layers, spawn);
-		const run = travel(layers, spawn);
-		await run.done;
-
-		// Phase 3: the route swap destroys this page, so the cover moves to <body>. While any
-		// `data-warp` is set, the layout's page fade is off and the dashboard sits fully opaque.
-		const root = document.documentElement;
-		document.body.appendChild(cover);
-		root.dataset.warp = 'cover';
-		try {
-			await goto(destination);
-			const idle = document.querySelector<HTMLElement>('.snake-idle');
-			if (!idle) {
-				// Only the index carries the idle snake to dock into; every other destination
-				// just ends the warp and lets the cover clear.
-				root.dataset.warp = 'idle';
-				window.setTimeout(() => delete root.dataset.warp, CARDS_MS);
-				return;
-			}
-			const rect = idle.getBoundingClientRect();
-			const target: Cell = {
-				x: Math.min(Math.max(toCell(rect.left), 0), layers.cols - SNAKE_CELLS),
-				y: Math.min(Math.max(toCell(rect.top), 0), layers.rows - SNAKE_CELLS)
-			};
-
-			root.dataset.warp = 'dock';
-			await dock(layers, run.path[run.path.length - 1], target);
-
-			// The idle snake takes over from the sprite on the exact grid cell it docked at.
-			idle.style.transform = `translate(${target.x * CELL_PX - rect.left}px, ${target.y * CELL_PX - rect.top}px)`;
-			root.dataset.warp = 'idle';
-			window.setTimeout(() => delete root.dataset.warp, CARDS_MS);
-		} catch (error) {
-			delete root.dataset.warp;
-			throw error;
-		} finally {
-			cover.remove();
-		}
+		leaveDesktop('closing');
 	}
 </script>
 
@@ -287,7 +213,6 @@
 					<div class="frame">
 						<div class="poster-cell">
 							<img
-								bind:this={poster}
 								class="poster-image"
 								src="/logo_v2.jpeg"
 								alt="Studio Py title card: a pixel-type wordmark above a figure in a blue puffer holding a pixel snake, with a printed caption line beneath the illustration"
@@ -315,7 +240,7 @@
 						<div class="fact"><dt>First run</dt><dd>16 minutes, in the browser</dd></div>
 						<div class="fact"><dt>Setup</dt><dd>None — Python runs in the page</dd></div>
 					</dl>
-					<a class="aqua-btn-blue launch" href="/dashboard" onclick={enter}>
+					<a class="aqua-btn-blue launch" href="/dashboard" onclick={launch}>
 						[ Launch Desktop → ]
 					</a>
 				</div>
@@ -355,11 +280,6 @@
 		</div>
 	</div>
 {/if}
-
-<div class="transition-overlay" bind:this={overlay} aria-hidden="true">
-	<canvas bind:this={wakeCanvas}></canvas>
-	<canvas bind:this={spriteCanvas}></canvas>
-</div>
 
 <style>
 	/* ---- the README window ------------------------------------------------------------
@@ -542,24 +462,29 @@
 		outline-offset: 2px;
 	}
 
-	/* The document: the only scroll box on the page. The frame never moves. */
+	/* The document: the only scroll box on the page. The frame never moves. The vertical
+	   padding is deliberately tight: the window is a fixed 600px, so any more than this
+	   and the column outgrows the frame and grows a scrollbar the print never needed. */
 	.mac-body {
 		position: relative;
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
-		padding: clamp(20px, 3vw, 40px);
+		padding: 24px clamp(20px, 3vw, 40px);
 		background: var(--color-paper);
 	}
 
-	/* Flat print: the paper and typography carry the composition without a lighting effect. */
+	/* Flat print: the paper and typography carry the composition without a lighting effect.
+	   `start` is what puts the "S" of the headline on the same line as the top of the
+	   print: centring the row floated the shorter text column down to the plate's middle,
+	   which read as a gap under the title bar. */
 	.hero {
 		position: relative;
 		isolation: isolate;
 		display: grid;
 		grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
-		align-items: center;
+		align-items: start;
 		gap: clamp(24px, 4.5vw, 88px);
 	}
 
@@ -581,8 +506,10 @@
 	.frame {
 		/* The window body is the measure now, not the viewport: subtract the chrome
 		   (menu bar, title bar, footer, dock gutter and the body's own padding) so the
-		   print lands inside the document instead of overflowing it. */
-		--frame-h: min(56vh, calc(100vh - 360px));
+		   print lands inside the document instead of overflowing it. 514px is the body's
+		   own box inside the fixed 600px window — 38px of title bar and 2×24px of padding —
+		   so the print is capped by the frame it is actually sitting in. */
+		--frame-h: min(56vh, 514px, calc(100vh - 360px));
 		position: relative;
 		isolation: isolate;
 		width: min(100%, calc(var(--frame-h) * 1888 / 2218));
@@ -626,6 +553,10 @@
 		width: 100%;
 		max-width: 100%;
 		height: auto;
+		/* The print scales to the frame instead of setting the frame's height: whatever the
+		   artwork's pixel height, it never pushes the body past the window's 600px. */
+		max-height: 100%;
+		object-fit: contain;
 	}
 
 	/* Dark mode is a print seen at night, not an inverted one: the poster keeps its
@@ -664,6 +595,8 @@
 		gap: clamp(18px, 2.2vw, 28px);
 		max-width: 52ch;
 		min-width: 0;
+		margin-top: 0;
+		padding-top: 0;
 	}
 
 	/* The headline is set against the readout's own column, not the viewport: the window
@@ -737,22 +670,6 @@
 		font-size: clamp(11px, 1.05vw, 12.5px);
 		line-height: 1.35;
 		letter-spacing: 0.02em;
-	}
-
-	.transition-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 100;
-		overflow: hidden;
-		background: transparent;
-		pointer-events: none;
-	}
-
-	.transition-overlay canvas {
-		position: absolute;
-		top: 0;
-		left: 0;
-		image-rendering: pixelated;
 	}
 
 	/* ---- The boot ---------------------------------------------------------------------
