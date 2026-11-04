@@ -6,6 +6,8 @@
 class OpenWindows {
 	currentLesson = $state<string | null>(null);
 	isMinimized = $state(false);
+	/** The window that currently holds focus: its title bar is blue, every other is grey. */
+	activeWindowId = $state<string | null>(null);
 }
 
 export const openWindows = new OpenWindows();

@@ -150,6 +150,9 @@
 	/** The call to action hands the desk over exactly as the red light does: the same
 	 *  mac-window exit, then the route. The anchor keeps its href so the desktop can still
 	 *  be opened in a new tab; a plain left click is intercepted. */
+	const LAUNCH_BOUNCE_MS = 300;
+	let launching = $state(false);
+
 	function launch(event: MouseEvent): void {
 		if (
 			event.button !== 0 ||
@@ -160,7 +163,14 @@
 		)
 			return;
 		event.preventDefault();
-		leaveDesktop('closing');
+		if (launching || exit !== 'idle') return;
+		if (!exitsAnimated()) {
+			leaveDesktop('closing');
+			return;
+		}
+		// The button is pressed like an Aqua bead first; the window leaves once it settles.
+		launching = true;
+		window.setTimeout(() => leaveDesktop('closing'), LAUNCH_BOUNCE_MS);
 	}
 </script>
 
@@ -240,7 +250,7 @@
 						<div class="fact"><dt>First run</dt><dd>16 minutes, in the browser</dd></div>
 						<div class="fact"><dt>Setup</dt><dd>None — Python runs in the page</dd></div>
 					</dl>
-					<a class="aqua-btn-blue launch" href="/dashboard" onclick={launch}>
+					<a class="aqua-btn-blue launch" class:pressed={launching} href="/dashboard" onclick={launch}>
 						[ Launch Desktop → ]
 					</a>
 				</div>
@@ -588,6 +598,26 @@
 		white-space: nowrap;
 	}
 
+	/* The press: down, a small overshoot, home. The spring curve overshoots on its own. */
+	.launch.pressed {
+		animation: launch-bounce 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+	}
+
+	@keyframes launch-bounce {
+		0% {
+			transform: scale(1);
+		}
+		33% {
+			transform: scale(0.95);
+		}
+		66% {
+			transform: scale(1.02);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
 	.readout {
 		display: flex;
 		flex-direction: column;
@@ -740,6 +770,23 @@
 	/* The mascot sprays out faster than the log types, so the art still resolves as a
 	   picture rather than crawling up one letter at a time. It starts once the log has
 	   finished typing, so the two sequences never overlap. */
+	/* Log lines are typed in hard steps, a few glyphs at a time, never a smooth wipe. */
+	.boot p {
+		animation-name: boot-line, boot-type;
+		animation-duration: 1ms, 100ms;
+		animation-timing-function: steps(1, end), steps(24, end);
+		animation-fill-mode: forwards, backwards;
+	}
+
+	@keyframes boot-type {
+		from {
+			clip-path: inset(0 100% 0 0);
+		}
+		to {
+			clip-path: inset(0 0 0 0);
+		}
+	}
+
 	.boot-art {
 		margin: 0.5rem 0 0.4rem;
 		font: inherit;

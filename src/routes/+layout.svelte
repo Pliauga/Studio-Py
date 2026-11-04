@@ -332,6 +332,47 @@
 	const onLanding = $derived(page.url.pathname === '/');
 	const onLesson = $derived(page.url.pathname.startsWith('/lesson/'));
 
+	/* Dock magnification: icons swell with the pointer's proximity, on a squared
+	   falloff, and lift as they grow. Only a mouse drives it, and never under reduced
+	   motion; CSS transitions on `.dock-icon` smooth the steps between pointer events. */
+	const DOCK_MAX_SCALE = 1.5;
+	const DOCK_SPREAD = 120;
+	const DOCK_LIFT = -12;
+
+	let dockEl = $state<HTMLElement | null>(null);
+	$effect(() => {
+		const dock = dockEl;
+		if (!dock) return;
+		const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+		const icons = () => dock.querySelectorAll<HTMLElement>('.dock-icon');
+		const settle = () => {
+			for (const icon of icons()) {
+				icon.style.removeProperty('--scale');
+				icon.style.removeProperty('--ty');
+			}
+		};
+		const magnify = (event: PointerEvent) => {
+			if (reduced.matches || event.pointerType !== 'mouse') {
+				settle();
+				return;
+			}
+			for (const icon of icons()) {
+				const box = icon.getBoundingClientRect();
+				const distance = Math.abs(event.clientX - (box.left + box.width / 2));
+				const t = Math.max(0, 1 - distance / DOCK_SPREAD);
+				const swell = t * t;
+				icon.style.setProperty('--scale', String(1 + (DOCK_MAX_SCALE - 1) * swell));
+				icon.style.setProperty('--ty', `${DOCK_LIFT * swell}px`);
+			}
+		};
+		dock.addEventListener('pointermove', magnify);
+		dock.addEventListener('pointerleave', settle);
+		return () => {
+			dock.removeEventListener('pointermove', magnify);
+			dock.removeEventListener('pointerleave', settle);
+		};
+	});
+
 	/* The dock bounces once when a lesson window opens: the class is set, then
 	   cleared after the 0.4s keyframe so a later open can replay it. */
 	let lessonBouncing = $state(false);
@@ -417,7 +458,7 @@
 	<!-- The dock: the desktop's own window manager. The folder is the index, the
 	     terminal is the lesson the reader has open. It floats over the work surface
 	     and never unmounts, so a closing window leaves the dock behind. -->
-	<nav class="mac-dock aqua-dock-shelf" aria-label="Dock">
+	<nav class="mac-dock aqua-dock-shelf" aria-label="Dock" bind:this={dockEl}>
 		<a
 			class="dock-icon"
 			class:running={onDashboard}
@@ -761,6 +802,7 @@
 		background: none;
 		cursor: pointer;
 		text-decoration: none;
+		transform: translateY(var(--ty, 0px)) scale(var(--scale, 1));
 		transition: transform var(--duration-2) var(--ease-standard);
 	}
 
@@ -775,16 +817,10 @@
 		filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
 	}
 
-	@media (hover: hover) {
-		.dock-icon:hover,
-		.dock-icon:focus-visible {
-			transform: translateY(-6px) scale(1.1);
-		}
-	}
-
 	.dock-icon:focus-visible {
 		outline: 2px solid var(--mac-blue);
 		outline-offset: 2px;
+		transform: translateY(-6px) scale(1.1);
 	}
 
 	/* One hop when a lesson window opens. */
@@ -821,7 +857,8 @@
 		line-height: 1.2;
 		white-space: nowrap;
 		opacity: 0;
-		transform: translate(-50%, 4px);
+		transform: translate(-50%, 4px) scale(calc(1 / var(--scale, 1)));
+		transform-origin: 50% 100%;
 		pointer-events: none;
 		transition:
 			opacity var(--duration-2) var(--ease-standard),
@@ -848,7 +885,7 @@
 		.dock-icon:hover::after,
 		.dock-icon:focus-visible::after {
 			opacity: 1;
-			transform: translate(-50%, 0);
+			transform: translate(-50%, 0) scale(calc(1 / var(--scale, 1)));
 		}
 
 		.dock-icon:hover::before,
@@ -1023,6 +1060,10 @@
 
 		.dock-icon {
 			transition: none;
+		}
+
+		.dock-icon.bounce {
+			animation: none;
 		}
 	}
 

@@ -3,6 +3,7 @@
 	import InkStamp from '#lib/components/InkStamp.svelte';
 	import SnakeSpine from '#lib/components/SnakeSpine.svelte';
 	import { trackWaypoints } from '#lib/motion/trail.ts';
+	import { trackWindowFocus } from '#lib/motion/windowFocus.ts';
 	import { MODULES } from '#lib/content/lessons.ts';
 	import { lessonComponent } from '#lib/content/lessonModules.ts';
 	import { sizeTier } from '#lib/content/chapters.ts';
@@ -57,6 +58,40 @@
 	    exit started, so the scale-down would play from the wrong geometry. */
 	let windowState = $state<'open' | 'closing' | 'minimizing'>('open');
 
+	let windowEl = $state<HTMLDivElement | null>(null);
+	let bumping = $state(false);
+	const WINDOW_ID = 'lesson';
+	const FOCUS_BUMP_MS = 200;
+	const active = $derived(openWindows.activeWindowId === WINDOW_ID);
+
+	$effect(() => {
+		if (!windowEl) return;
+		let bumpTimer: ReturnType<typeof setTimeout> | undefined;
+		const stop = trackWindowFocus(WINDOW_ID, windowEl, () => {
+			if (!exitsAnimated()) return;
+			bumping = true;
+			clearTimeout(bumpTimer);
+			bumpTimer = setTimeout(() => (bumping = false), FOCUS_BUMP_MS);
+		});
+		return () => {
+			clearTimeout(bumpTimer);
+			stop();
+		};
+	});
+
+	/** The genie aims at the lesson's Dock tile: the offsets run from the window's foot
+	    to the tile's centre, and the stylesheet narrows the window along them. */
+	function aimAtDock(): void {
+		if (!windowEl) return;
+		const frame = windowEl.getBoundingClientRect();
+		const tile = document.querySelector<HTMLElement>('.dock-icon[data-tip="Terminal"]');
+		const target = tile?.getBoundingClientRect();
+		const dx = target ? target.left + target.width / 2 - (frame.left + frame.width / 2) : 0;
+		const dy = target ? target.top + target.height / 2 - frame.bottom : window.innerHeight / 2;
+		windowEl.style.setProperty('--genie-x', `${dx}px`);
+		windowEl.style.setProperty('--genie-y', `${dy}px`);
+	}
+
 	/** Reduced motion goes straight to the desktop instead of waiting out a transition. */
 	function exitsAnimated(): boolean {
 		return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -71,6 +106,7 @@
 			after();
 			return;
 		}
+		if (kind === 'minimizing') aimAtDock();
 		windowState = kind;
 		window.setTimeout(
 			() => {
@@ -160,8 +196,11 @@
 	<div
 		class="os-window"
 		class:maximized
+		class:inactive={!active}
+		class:bump={bumping}
 		class:closing={windowState === 'closing'}
 		class:minimizing={windowState === 'minimizing'}
+		bind:this={windowEl}
 	>
 		<div class="crt-scan on" aria-hidden="true"></div>
 		<div class="title-bar aqua-pinstripes">
@@ -372,7 +411,8 @@
 		/* A hairline edge plus a deep soft drop: the window sits above the desktop
 		   rather than being drawn onto it. */
 		box-shadow: var(--mac-window-shadow);
-		transform: translateX(-50%);
+		--base-x: -50%;
+		transform: translateX(var(--base-x));
 		/* A window that is maximised or minimised leaves its frame behind a transform,
 		   so the move is animated rather than snapped. */
 		transition:
@@ -402,6 +442,32 @@
 		color: var(--mac-aqua-ink);
 		font-family: var(--mac-ui);
 		user-select: none;
+		isolation: isolate;
+	}
+
+	/* Focus is a blue wash over the pinstripe, faded rather than swapped: a gradient
+	   cannot be transitioned, an opacity can. The inactive bar is the bare grey stripe. */
+	.title-bar::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		background: linear-gradient(to bottom, rgba(120, 180, 255, 0.5), rgba(59, 153, 252, 0.22));
+		opacity: 1;
+		pointer-events: none;
+		transition: opacity 0.2s ease;
+	}
+
+	.os-window.inactive .title-bar::before {
+		opacity: 0;
+	}
+
+	.os-window.inactive .title-bar :global(.aqua-traffic-light) {
+		filter: grayscale(1);
+	}
+
+	.os-window.inactive .window-name {
+		opacity: 0.55;
 	}
 
 	.traffic {
@@ -489,7 +555,23 @@
 		/* A maximised window still sits on the desktop, so it keeps a shallower drop
 		   rather than losing its elevation entirely. */
 		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+		--base-x: 0px;
 		transform: none;
+	}
+
+	/* Coming to the front: a 2% swell that settles. */
+	.os-window.bump {
+		animation: focus-bump 200ms ease-out;
+	}
+
+	@keyframes focus-bump {
+		0%,
+		100% {
+			transform: translateX(var(--base-x)) scale(1);
+		}
+		50% {
+			transform: translateX(var(--base-x)) scale(1.02);
+		}
 	}
 
 	/* The red light: a document shrinks in place as it is put away. The duration is
@@ -504,15 +586,32 @@
 			opacity 300ms ease-out;
 	}
 
-	/* The yellow light: macOS minimises toward the Dock at the foot of the screen, which is
-	   a longer throw than the close, so it gets the longer beat. */
+	/* The yellow light: the Genie. The window pinches toward the foot of its frame while
+	   it is carried onto the Dock tile (`--genie-x/y`, measured at click time), so it
+	   narrows into the Dock rather than merely shrinking. */
 	.os-window.minimizing {
-		transform: translateX(-50%) translateY(50vh) scale(0.2);
-		opacity: 0;
+		transform-origin: 50% 100%;
 		pointer-events: none;
-		transition:
-			transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1),
-			opacity 400ms ease-out;
+		animation: genie 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+	}
+
+	@keyframes genie {
+		0% {
+			transform: translateX(var(--base-x)) translate(0, 0) scale(1, 1);
+			clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+			opacity: 1;
+		}
+		55% {
+			transform: translateX(var(--base-x)) translate(calc(var(--genie-x) * 0.35), calc(var(--genie-y) * 0.35))
+				scale(0.7, 0.8);
+			clip-path: polygon(0 0, 100% 0, 62% 100%, 38% 100%);
+			opacity: 1;
+		}
+		100% {
+			transform: translateX(var(--base-x)) translate(var(--genie-x), var(--genie-y)) scale(0.08, 0.04);
+			clip-path: polygon(0 0, 100% 0, 52% 100%, 48% 100%);
+			opacity: 0;
+		}
 	}
 
 	/* Both exit variants have to compose with the base `translateX(-50%)` that centres
@@ -522,9 +621,6 @@
 		transform: scale(0.85);
 	}
 
-	.os-window.maximized.minimizing {
-		transform: translateY(50vh) scale(0.2);
-	}
 
 	/* The name is centred in the bar itself. The badge on the right is allowed to be wider
 	   than the light cluster on the left, so the offset is measured against the badge. */
@@ -630,6 +726,15 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.os-window {
+			transition: none;
+		}
+
+		.os-window.bump,
+		.os-window.minimizing {
+			animation: none;
+		}
+
+		.title-bar::before {
 			transition: none;
 		}
 	}
