@@ -14,8 +14,10 @@
 
 	/**
 	 * The application name a module wears on the desktop: the week, then its first
-	 * distinguishing word — W01_VARIABLES.app. The full title stays in the accessible
+	 * distinguishing word — W01_VARIABLES. The full title stays in the accessible
 	 * name, so the file name is flavour without becoming the label a reader must decode.
+	 * The extension is deliberately omitted: the desktop already implies it, and eight
+	 * more characters are what pushed these labels onto a third line.
 	 */
 	const appName = (week: number, title: string) => {
 		const word =
@@ -24,7 +26,7 @@
 				.replace(/[^A-Z0-9]+/g, ' ')
 				.split(' ')
 				.find((part) => part.length > 0 && !NOISE.has(part)) ?? 'LESSON';
-		return `W${pad(week)}_${word}.app`;
+		return `W${pad(week)}_${word}`;
 	};
 
 	// Selection is the desktop's own idea of a cursor: one tile at a time, and the
@@ -68,7 +70,6 @@
 			{@const status = progress.statusOf(module.slug)}
 			{@const name = appName(module.week, module.title)}
 			{@const cut = name.indexOf('_') + 1}
-			{@const ext = name.lastIndexOf('.')}
 			<li>
 				<a
 					class="icon"
@@ -98,17 +99,17 @@
 							src={`/icons/icons_v2/lessons/week${module.week}_icon.svg`}
 							alt=""
 							class="os-icon-img"
-							width="64"
-							height="64"
+							width="80"
+							height="80"
 							draggable="false"
 						/>
 					</span>
 
 					<!-- The name is one unbreakable token, so the only place a line may
 					     break is the week separator. The `<wbr>` marks that opportunity;
-					     without it every break falls mid-word (W02_CONDITIO / NALS.app). -->
+					     without it every break falls mid-word (W02_CONDITIO / NALS). -->
 					<span class="filename" aria-hidden="true"
-						>{name.slice(0, cut)}<wbr />{name.slice(cut, ext)}<wbr />{name.slice(ext)}</span
+						>{name.slice(0, cut)}<wbr />{name.slice(cut)}</span
 					>
 					<!-- The portal shutter reads the card's h2, and this is the icon's real
 					     accessible name: the file name above is flavour, not the label. -->
@@ -162,13 +163,12 @@
 	}
 
 	/* The layout owns the blue wallpaper and grid; this route keeps its tiles clear
-	   of the menu bar above and the dock below. */
+	   of the menu bar above and the dock below. The tile grid supplies its own padding. */
 	.desk {
 		position: absolute;
 		inset: 0;
 		box-sizing: border-box;
-		padding: clamp(12px, 2vw, 24px) clamp(16px, 3vw, 40px)
-			calc(var(--mac-dock-gutter) - var(--mac-menubar-h));
+		padding: 0 0 calc(var(--mac-dock-gutter) - var(--mac-menubar-h));
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		scrollbar-width: none;
@@ -189,16 +189,19 @@
 	/* ---- the icon grid --------------------------------------------------------------- */
 
 	/* A macOS desktop packs its icons in columns from the top-left, at a fixed tile
-	   width, rather than stretching them to fill the surface. */
+	   width, rather than stretching them to fill the surface. The track is wide enough
+	   for the longest module word (`ARCHITECTURE` measures 98px at 13px) plus the tile's
+	   horizontal padding, so no label has to break inside a word. */
 	.icons {
 		position: relative;
 		z-index: 1;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, 108px);
+		grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+		gap: 24px;
+		padding: 40px;
+		align-content: start;
 		justify-content: start;
-		gap: clamp(8px, 1.2vw, 16px);
 		margin: 0;
-		padding: 0;
 		list-style: none;
 	}
 
@@ -225,11 +228,11 @@
 	.glyph {
 		position: relative;
 		display: block;
-		width: 64px;
-		height: 64px;
-		/* The Aqua plates are 64px pixel art; the tile renders them at their authored
-		   size so the 2px blocks land on whole device pixels and stay square. */
-		filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.22));
+		width: 80px;
+		height: 80px;
+		/* The Aqua plates are pixel art; the tile renders them at 80px so the 2px blocks
+		   land on whole device pixels and stay square at the larger size. */
+		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
 	}
 
 	/* The SVGs carry their own four-colour palette on a transparent ground, so they
@@ -249,13 +252,9 @@
 	   module word takes a second line rather than an ellipsis that would hide which file
 	   it is. */
 	.filename {
-		/* The tile's inner width at its 108px column. The second line carries the module
-		   word plus the extension, and the widest of those (`ARCHITECTURE.app`) measures
-		   97px at 10px, so the box has to be at least that wide to avoid breaking inside
-		   a word. */
-		width: 100px;
-		font-size: 10px;
-		line-height: 1.2;
+		width: 100%;
+		font-size: 13px;
+		line-height: 1.25;
 		text-align: center;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
@@ -265,11 +264,10 @@
 		word-break: normal;
 		overflow-wrap: break-word;
 		font-family: var(--mac-ui);
-		color: #1d1d1f;
-		/* macOS draws a light halo behind desktop labels so they read over any wallpaper. */
-		text-shadow:
-			0 0 3px rgba(255, 255, 255, 0.9),
-			0 1px 2px rgba(255, 255, 255, 0.75);
+		color: #ffffff;
+		/* White labels on a blue wallpaper need a dark halo to stay legible; this is the
+		   inverse of the light halo macOS uses over pale desktops. */
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 	}
 
 	/* The selection: one macOS blue, rounded, with the label inverted to white the way
@@ -280,7 +278,7 @@
 
 	.icon.selected .filename {
 		color: #ffffff;
-		text-shadow: none;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 	}
 
 	.icon:focus-visible {
@@ -293,10 +291,10 @@
 	.icon.active .glyph::after {
 		content: '';
 		position: absolute;
-		bottom: 26px;
+		bottom: 32px;
 		left: 50%;
-		width: 5px;
-		height: 5px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
 		background: var(--color-snake);
 		box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
@@ -327,13 +325,14 @@
 	}
 
 	@media (max-width: 640px) {
-		/* Three fluid columns rather than three fixed 84px ones: the widest module word
-		   (`ARCHITECTURE`) needs ~97px at 10px, and a fixed track leaves it nowhere to go
+		/* Three fluid columns rather than three fixed 100px ones: the widest module word
+		   (`ARCHITECTURE`) needs ~97px at 13px, and a fixed track leaves it nowhere to go
 		   but a mid-word break. Fluid tracks keep the grid at three columns and hand every
 		   tile the width the viewport can spare. */
 		.icons {
 			grid-template-columns: repeat(3, minmax(0, 1fr));
 			gap: 10px;
+			padding: 16px;
 		}
 
 		.glyph {
@@ -344,13 +343,13 @@
 		.filename {
 			width: auto;
 			max-width: 100%;
-			font-size: 10px;
+			font-size: 12px;
 		}
 	}
 
 	/* Below 360px a third column leaves each tile ~89px, which is narrower than the
-	   longest name tail; three columns there means clipping the extension off five
-	   files. Two wider columns keep every name whole, which is what the label is for. */
+	   longest name word; three columns there means breaking inside a word. Two wider
+	   columns keep every name whole, which is what the label is for. */
 	@media (max-width: 359px) {
 		.icons {
 			grid-template-columns: repeat(2, minmax(0, 1fr));

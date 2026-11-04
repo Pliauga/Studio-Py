@@ -367,20 +367,25 @@
 		position: absolute;
 		inset: 0;
 		display: flex;
-		align-items: stretch;
+		align-items: center;
 		justify-content: center;
 		padding: clamp(16px, 3vh, 40px) clamp(12px, 2.4vw, 40px)
 			calc(var(--mac-dock-gutter) - var(--mac-menubar-h));
 		box-sizing: border-box;
 	}
 
+	/* A document window, not a takeover: 900×600 is where a README sits on a desktop
+	   that still shows wallpaper around it. The vw/vh caps keep it inside the surface
+	   on a small screen without ever letting it fill one. */
 	.mac-window {
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		width: min(1280px, 100%);
-		max-height: 100%;
-		min-height: 0;
+		width: 900px;
+		max-width: 90vw;
+		height: 600px;
+		max-height: 80vh;
+		margin: auto;
 		border-radius: 12px;
 		overflow: hidden;
 		background: var(--color-paper);
@@ -696,7 +701,10 @@
 		margin: 0;
 		max-width: 100%;
 		font-family: var(--font-display);
-		font-size: clamp(2.6rem, 4.4vw, 3.9rem);
+		/* The window is a fixed 900px card now, so the display type cannot scale off the
+		   viewport — `4.4vw` measured the screen and overflowed the 317px readout column
+		   into four wrapped lines. The ceiling is set by the column, not the display. */
+		font-size: clamp(2rem, 2.6vw, 2.5rem);
 		font-weight: 900;
 		line-height: 0.9;
 		letter-spacing: -0.04em;

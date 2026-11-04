@@ -353,8 +353,7 @@
 	siblings of the route content, so neither remounts when a route changes — a
 	window opening over the desktop never takes the desktop with it.
 -->
-<div class="mac-desktop desktop-background">
-	<div class="desktop-grid" aria-hidden="true"></div>
+<div class="mac-desktop">
 
 	<header class="mac-menubar">
 		<a class="menubar-mark" href="/" onclick={pressWordmark} aria-label="Studio Py — go to the README">
@@ -531,7 +530,9 @@
 	}
 
 	/* The desktop itself. It is the viewport: no scroll, no chrome of its own, and
-	   every route draws on top of it rather than replacing it. */
+	   every route draws on top of it rather than replacing it. The Tiger swirl is four
+	   radial highlights over a diagonal blue ramp; the grid is a `::before` so the
+	   wallpaper and the ruling are one surface and neither needs an extra element. */
 	.mac-desktop {
 		position: relative;
 		isolation: isolate;
@@ -539,9 +540,6 @@
 		width: 100vw;
 		height: 100vh;
 		overflow: hidden;
-	}
-
-	.desktop-background {
 		background:
 			radial-gradient(circle at 50% 120%, rgba(26, 175, 255, 0.45) 0%, transparent 60%),
 			radial-gradient(circle at 15% 15%, rgba(135, 219, 255, 0.4) 0%, transparent 45%),
@@ -551,17 +549,16 @@
 		background-attachment: fixed;
 	}
 
-	/* The cutting-mat grid: faint enough to read over, regular enough that a window
-	   looks placed on a surface rather than floated in a void. */
-	.desktop-grid {
+	/* The subtle brutalist grid overlay. */
+	.mac-desktop::before {
+		content: '';
 		position: absolute;
 		inset: 0;
 		z-index: 0;
 		background-image:
-			linear-gradient(var(--desktop-grid-ink) 1px, transparent 1px),
-			linear-gradient(90deg, var(--desktop-grid-ink) 1px, transparent 1px);
+			linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
 		background-size: 20px 20px;
-		opacity: 0.03;
 		pointer-events: none;
 	}
 
