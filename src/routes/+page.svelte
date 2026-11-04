@@ -16,8 +16,11 @@
 		type Cell
 	} from '#lib/transition/snake-warp.ts';
 
-	/** Where the emblem's snake head sits inside the poster, as fractions of the image. */
-	const EMBLEM_HEAD = { x: 1051.5 / 1200, y: 814 / 1607 };
+	/** Where the emblem's snake head sits inside the print, as fractions of the image.
+	 *  Measured against the current artwork (1888×2218), not carried over: the green snake's
+	 *  centroid is at px (1476, 1066). The old poster's fraction lands on the figure's
+	 *  shoulder in this artwork, so the warp would fire from the wrong place. */
+	const EMBLEM_HEAD = { x: 1476 / 1888, y: 1066 / 2218 };
 	/** Cards finish arriving this long after the dock starts; only then is the flag cleared. */
 	const CARDS_MS = 420;
 	/** The window exit. Must match the 0.3s transition in the stylesheet. */
@@ -243,10 +246,8 @@
 	<link
 		rel="preload"
 		as="image"
-		type="image/webp"
-		href="/studio-py-poster-1200.webp"
-		imagesrcset="/studio-py-poster-1200.webp 1200w, /studio-py-poster-2400.webp 2400w"
-		imagesizes="(max-width: 900px) 100vw, 50vw"
+		type="image/jpeg"
+		href="/logo_v2.jpeg"
 		fetchpriority="high"
 	/>
 </svelte:head>
@@ -287,12 +288,10 @@
 							<img
 								bind:this={poster}
 								class="poster-image"
-								src="/studio-py-poster-1200.webp"
-								srcset="/studio-py-poster-1200.webp 1200w, /studio-py-poster-2400.webp 2400w"
-								sizes="(max-width: 900px) 100vw, 50vw"
-								alt="Studio Py poster featuring a developer in a blue puffer holding a pixel snake"
-								width="1200"
-								height="1607"
+								src="/logo_v2.jpeg"
+								alt="Studio Py title card: a pixel-type wordmark above a figure in a blue puffer holding a pixel snake, with a printed caption line beneath the illustration"
+								width="1888"
+								height="2218"
 								fetchpriority="high"
 							/>
 						</div>
@@ -303,7 +302,9 @@
 						{/if}
 					</div>
 					<figcaption class="plate-caption" aria-hidden="true">
-						<span class="fig">FIG 0.1 — Operator{#if plate.density !== null}{' '}· ink {Math.round(plate.density * 100)}%{/if}</span>
+						{#if plate.density !== null}
+							<span class="fig">ink {Math.round(plate.density * 100)}%</span>
+						{/if}
 						<span class="colophon">EDITION 01/25 · OFFSET · RISO GREEN · 1200 DPI · WEBASSEMBLY</span>
 					</figcaption>
 				</figure>
@@ -560,18 +561,24 @@
 		gap: clamp(24px, 4.5vw, 88px);
 	}
 
-	/* The figure is exactly as wide as the print, so the captions align to its left edge. */
+	/* The figure is exactly as wide as the print, so the captions align to its left edge.
+	   A percentage width rather than `fit-content`: the print now fills its column, and a
+	   fit-content plate would still be shrink-wrapped around the caption's colophon line. */
 	.plate {
 		display: grid;
 		justify-items: start;
-		width: fit-content;
+		width: 100%;
 		max-width: 100%;
 		gap: 14px;
 		min-width: 0;
 		margin: 0 auto;
 	}
 
-	/* Sized by CSS, never by the file: the plate cannot move when the poster lands. */
+	/* Sized by CSS, never by the file: the plate cannot move when the print lands.
+	   The print takes the smaller of the column width and the height budget, then derives its
+	   height from the ratio. `max-width: 100%` does not work here: on this grid item Chrome
+	   computes it as 100% and still lays the box out at the height-derived width (524px in a
+	   438px column), so the cap has to be inside the width itself. */
 	.frame {
 		/* The window body is the measure now, not the viewport: subtract the chrome
 		   (menu bar, title bar, footer, dock gutter and the body's own padding) so the
@@ -579,11 +586,9 @@
 		--frame-h: min(56vh, calc(100vh - 360px));
 		position: relative;
 		isolation: isolate;
-		/* Width is computed from the height, not left to aspect-ratio: Safari resolves a
-		   fit-content parent over an aspect-ratio child to zero, which collapses the plate. */
-		width: calc(var(--frame-h) * 1200 / 1607);
-		height: var(--frame-h);
-		aspect-ratio: 1200 / 1607;
+		width: min(100%, calc(var(--frame-h) * 1888 / 2218));
+		height: auto;
+		aspect-ratio: 1888 / 2218;
 		min-width: 0;
 		max-width: 100%;
 		line-height: 0;
@@ -613,12 +618,15 @@
 		z-index: 1;
 	}
 
-	/* The print fills the cell exactly, edge to edge. */
+	/* The print fills the cell exactly, edge to edge. The frame ratio is the asset's own
+	   ratio (1888:2218), so a percentage width resolves to the frame height with no crop;
+	   `height: auto` keeps it proportional if the artwork is ever replaced at another ratio
+	   instead of squashing it. */
 	.poster-image {
 		display: block;
 		width: 100%;
-		height: 100%;
-		object-fit: cover;
+		max-width: 100%;
+		height: auto;
 	}
 
 	/* Dark mode is a print seen at night, not an inverted one: the poster keeps its
