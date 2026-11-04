@@ -174,6 +174,16 @@ export function editorChrome(palette: EditorPalette, scale: EditorScale = {}) {
 				backgroundColor: palette.selection
 			},
 			'.cm-cursor, .cm-dropCursor': { borderLeftColor: palette.ink },
+			'.cm-cursor-primary': {
+				borderLeft: 'none',
+				marginLeft: '0',
+				width: '0.6em',
+				backgroundColor: palette.dark ? '#33ff00' : palette.ink
+			},
+			'&.cm-focused > .cm-scroller > .cm-cursorLayer': {
+				animation: 'steps(2, end) cm-blink 1s infinite',
+				animationDuration: '1s !important'
+			},
 			'.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
 				backgroundColor: 'transparent',
 				outline: `1px solid ${palette.ink}`

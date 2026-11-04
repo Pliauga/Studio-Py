@@ -62,9 +62,6 @@
 
 	<h1 class="sr-only">Module index</h1>
 
-	<!-- The warp transition on the landing page docks into this node by selector. -->
-	<span class="snake-idle" aria-hidden="true"></span>
-
 	<ul class="icons">
 		{#each MODULES as module (module.slug)}
 			{@const status = progress.statusOf(module.slug)}
@@ -126,30 +123,6 @@
 </main>
 
 <style>
-	:global(html[data-warp]) :global(.desktop-page) {
-		animation: none;
-	}
-
-	:global(html[data-warp='cover']) .snake-idle,
-	:global(html[data-warp='dock']) .snake-idle {
-		visibility: hidden;
-	}
-
-	:global(html[data-warp]:not([data-warp='cover'])) .icons li {
-		animation: icon-in var(--duration-2) var(--ease-standard) backwards;
-	}
-
-	@keyframes icon-in {
-		from {
-			opacity: 0;
-			transform: translateY(8px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
 	.sr-only {
 		position: absolute;
 		width: 1px;
@@ -311,16 +284,6 @@
 		right: 0;
 		transform: scale(0.55);
 		transform-origin: top right;
-		pointer-events: none;
-	}
-
-	.snake-idle {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		width: 48px;
-		height: 48px;
-		background: var(--color-snake);
 		pointer-events: none;
 	}
 

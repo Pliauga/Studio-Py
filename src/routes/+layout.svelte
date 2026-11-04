@@ -331,6 +331,22 @@
 	const onDashboard = $derived(page.url.pathname.startsWith('/dashboard'));
 	const onLanding = $derived(page.url.pathname === '/');
 	const onLesson = $derived(page.url.pathname.startsWith('/lesson/'));
+
+	/* The dock bounces once when a lesson window opens: the class is set, then
+	   cleared after the 0.4s keyframe so a later open can replay it. */
+	let lessonBouncing = $state(false);
+	let bounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let previousLesson: string | undefined;
+	$effect(() => {
+		const current = openWindows.currentLesson;
+		if (current && current !== previousLesson) {
+			lessonBouncing = true;
+			clearTimeout(bounceTimer);
+			bounceTimer = setTimeout(() => (lessonBouncing = false), 400);
+		}
+		previousLesson = current ?? undefined;
+	});
+	$effect(() => () => clearTimeout(bounceTimer));
 </script>
 
 <svelte:head>
@@ -407,6 +423,7 @@
 			class:running={onDashboard}
 			href="/dashboard"
 			aria-label="Dashboard — the module index"
+			data-tip="Finder"
 			title="Dashboard"
 		>
 			<img
@@ -425,6 +442,7 @@
 			class:running={onLanding}
 			href="/"
 			aria-label="README — about Studio Py"
+			data-tip="Studio Py"
 			title="README.md"
 		>
 			<img
@@ -444,8 +462,10 @@
 				class="dock-icon"
 				class:running={onLesson}
 				class:minimized={openWindows.isMinimized}
+				class:bounce={lessonBouncing}
 				href={`/lesson/${lessonOpen.slug}`}
 				aria-label={`Lesson window — ${lessonOpen.title}`}
+				data-tip="Terminal"
 				title={lessonOpen.title}
 			>
 				<img
@@ -468,6 +488,7 @@
 			onclick={toggleTheme}
 			aria-pressed={theme === 'dark'}
 			aria-label="Settings — toggle dark mode"
+			data-tip="Settings"
 			title={theme === 'dark' ? 'Settings — dark mode on' : 'Settings — dark mode off'}
 		>
 			<img
@@ -764,6 +785,76 @@
 	.dock-icon:focus-visible {
 		outline: 2px solid var(--mac-blue);
 		outline-offset: 2px;
+	}
+
+	/* One hop when a lesson window opens. */
+	.dock-icon.bounce {
+		animation: dock-bounce 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+
+	@keyframes dock-bounce {
+		0%,
+		100% {
+			transform: translateY(0);
+		}
+		40% {
+			transform: translateY(-20px);
+		}
+	}
+
+	/* Hover label: a recessed well with a pointer, pass-through so it never eats a click. */
+	.dock-icon::after {
+		content: attr(data-tip);
+		position: absolute;
+		bottom: calc(100% + 12px);
+		left: 50%;
+		padding: 3px 8px;
+		border: 1px solid #8e9092;
+		border-radius: 4px;
+		background: var(--aqua-well);
+		box-shadow:
+			inset 1px 1px 3px rgba(0, 0, 0, 0.28),
+			0 1px 0 rgba(255, 255, 255, 0.8);
+		color: var(--color-ink, #1a1a1a);
+		font-family: var(--font-mono, monospace);
+		font-size: 12px;
+		line-height: 1.2;
+		white-space: nowrap;
+		opacity: 0;
+		transform: translate(-50%, 4px);
+		pointer-events: none;
+		transition:
+			opacity var(--duration-2) var(--ease-standard),
+			transform var(--duration-2) var(--ease-standard);
+	}
+
+	.dock-icon::before {
+		content: '';
+		position: absolute;
+		bottom: calc(100% + 7px);
+		left: 50%;
+		width: 0;
+		height: 0;
+		border-left: 5px solid transparent;
+		border-right: 5px solid transparent;
+		border-top: 5px solid #8e9092;
+		opacity: 0;
+		transform: translateX(-50%);
+		pointer-events: none;
+		transition: opacity var(--duration-2) var(--ease-standard);
+	}
+
+	@media (hover: hover) {
+		.dock-icon:hover::after,
+		.dock-icon:focus-visible::after {
+			opacity: 1;
+			transform: translate(-50%, 0);
+		}
+
+		.dock-icon:hover::before,
+		.dock-icon:focus-visible::before {
+			opacity: 1;
+		}
 	}
 
 	/* The running indicator: a window this app owns is on screen. */

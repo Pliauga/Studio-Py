@@ -173,8 +173,8 @@
 	<link
 		rel="preload"
 		as="image"
-		type="image/jpeg"
-		href="/logo_v2.jpeg"
+		type="image/webp"
+		href="/logo_v2.webp"
 		fetchpriority="high"
 	/>
 </svelte:head>
@@ -201,10 +201,10 @@
 					<span class="mark" aria-hidden="true">+</span>
 				</button>
 			</span>
-			<h2 class="mac-filename" id="readme-title">
+			<p class="mac-filename" id="readme-title">
 				<span class="mac-doc" aria-hidden="true">📄</span>
 				README.md
-			</h2>
+			</p>
 		</div>
 
 		<div class="mac-body" data-mac-scroll>
@@ -214,7 +214,7 @@
 						<div class="poster-cell">
 							<img
 								class="poster-image"
-								src="/logo_v2.jpeg"
+								src="/logo_v2.webp"
 								alt="Studio Py title card: a pixel-type wordmark above a figure in a blue puffer holding a pixel snake, with a printed caption line beneath the illustration"
 								width="1888"
 								height="2218"
