@@ -219,6 +219,18 @@
 	src: url('/fonts/courier-prime-700.woff2') format('woff2');
 }
 
+/* The display face for the landing headline. Only the H1 uses it, so it is not
+   preloaded: a first paint that waits on a 48 kB type file is a slower headline than
+   one that swaps in. Kept in step 400 so the browser picks it without a synthetic
+   weight. */
+@font-face {
+	font-family: 'Pixelita';
+	src: url('/fonts/Pixelta.ttf') format('truetype');
+	font-weight: normal;
+	font-style: normal;
+	font-display: swap;
+}
+
 /* Metric-matched local fallbacks: overrides derived from the real font files
    (average lowercase advance for size-adjust; ascent/descent divided by it)
    so the swap to the web font does not shift layout. */

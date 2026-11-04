@@ -1,10 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { MODULES } from '#lib/content/lessons.ts';
-	import { progress } from '#lib/stores/progress.svelte.ts';
-	import { plate } from '#lib/stores/plate.svelte.ts';
-	import LandingTerminal from '#lib/components/LandingTerminal.svelte';
 	import type { Component } from 'svelte';
 	import {
 		CELL_PX,
@@ -36,19 +32,15 @@
 	let reduceMotion = $state(false);
 
 	const toCell = (px: number) => Math.round(px / CELL_PX);
-	const pad = (n: number) => String(n).padStart(2, '0');
-
-	/** Honest before hydration — a first-time visitor really is 0/24 — and live after it. */
-	let completedCount = $state(0);
 
 	/** The boot overlay is an after-paint flourish: it never gates the poster's HTML. */
 	const BOOT_KEY = 'studio-py:booted';
-	/** A long mechanical start-up: the log fills the screen, the operator draws, then the
-	 *  shutter lifts. The cascade itself is timed entirely in CSS (`animation-delay`, keyed
+	/** A short mechanical start-up: the log fills the screen, the operator draws, then the
+	 *  overlay lifts. The cascade itself is timed entirely in CSS (`animation-delay`, keyed
 	 *  on `--i`, so main-thread jank cannot strand it part-printed); these two only place
-	 *  the lift and the fade that follows. */
-	const BOOT_HOLD_MS = 3600;
-	const BOOT_FADE_MS = 200;
+	 *  the fade and the unmount that follows it. */
+	const BOOT_HOLD_MS = 2500;
+	const BOOT_FADE_MS = 500;
 
 	/** The system log. Counts and addresses are flavour: they describe a dying machine. */
 	const BOOT_LOG = [
@@ -89,24 +81,29 @@
 	let booting = $state(false);
 	let bootLeaving = $state(false);
 
+	/** The halftone is a whole three.js scene. Hydrating it competes with the boot for the
+	 *  main thread — it cost ~3.2s of jank and starved the boot's own timers — so it waits
+	 *  for idle after the overlay has lifted. The poster is painted without it. */
+	const showHalftone = () => {
+		const start = () =>
+			void import('#lib/components/scene/HalftonePlate.svelte').then((module) => {
+				HalftonePlate = module.default;
+			});
+		if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 2000 });
+		else setTimeout(start, 200);
+	};
+
+	/** Unmounts the overlay once, whether the fade ended or was never going to. */
+	let bootEnded = false;
+	const endBoot = () => {
+		if (bootEnded) return;
+		bootEnded = true;
+		booting = false;
+		showHalftone();
+	};
+
 	onMount(() => {
 		reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-		completedCount = MODULES.filter(
-			(module) => progress.statusOf(module.slug) === 'completed'
-		).length;
-
-		// The halftone is a whole three.js scene. Hydrating it competes with the boot for
-		// the main thread — it cost ~3.2s of jank and starved the boot's own timers — so it
-		// waits for idle after the shutter has lifted. The poster is painted without it.
-		const showHalftone = () => {
-			const start = () =>
-				void import('#lib/components/scene/HalftonePlate.svelte').then((module) => {
-					HalftonePlate = module.default;
-				});
-			if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 2000 });
-			else setTimeout(start, 200);
-		};
 
 		// One boot per session, never under reduced motion, and never at the cost of a
 		// poster the browser has already painted: the overlay mounts on top of it.
@@ -127,14 +124,18 @@
 		}
 
 		booting = true;
-		const endBoot = () => {
-			booting = false;
-			showHalftone();
-		};
 		// The lines paint from CSS animation-delay, so the sequence survives main-thread
-		// jank. These timers only lift the shutter at 700ms and unmount one fade later.
-		window.setTimeout(() => (bootLeaving = true), BOOT_HOLD_MS);
-		window.setTimeout(endBoot, BOOT_HOLD_MS + BOOT_FADE_MS);
+		// jank. The lift is an animation rather than a transition — a transition needs a
+		// painted frame after the class lands, and the three.js plate can block the thread
+		// past the unmount, so the overlay vanished instead of dissolving. The unmount
+		// rides the animation's own end; the timer behind it is a backstop for a suppressed
+		// animation (reduced motion, an interrupted run), which never fires that event. It
+		// is armed when the fade starts, not at mount, or jank before the fade would spend
+		// the backstop early and cut the animation off mid-dissolve.
+		window.setTimeout(() => {
+			bootLeaving = true;
+			window.setTimeout(endBoot, BOOT_FADE_MS + 1000);
+		}, BOOT_HOLD_MS);
 	});
 
 	/**
@@ -283,7 +284,7 @@
 		<div class="mac-body" data-mac-scroll>
 			<main class="hero">
 				<figure class="plate">
-					<div class="frame" data-plate-density={plate.density ?? undefined}>
+					<div class="frame">
 						<div class="poster-cell">
 							<img
 								bind:this={poster}
@@ -301,12 +302,6 @@
 							</div>
 						{/if}
 					</div>
-					<figcaption class="plate-caption" aria-hidden="true">
-						{#if plate.density !== null}
-							<span class="fig">ink {Math.round(plate.density * 100)}%</span>
-						{/if}
-						<span class="colophon">EDITION 01/25 · OFFSET · RISO GREEN · 1200 DPI · WEBASSEMBLY</span>
-					</figcaption>
 				</figure>
 
 				<div class="readout">
@@ -320,39 +315,46 @@
 						<div class="fact"><dt>First run</dt><dd>16 minutes, in the browser</dd></div>
 						<div class="fact"><dt>Setup</dt><dd>None — Python runs in the page</dd></div>
 					</dl>
-					<LandingTerminal onEnter={enter} />
-					<p class="terminal-caption">
-						{pad(completedCount)} / {pad(MODULES.length)} complete
-					</p>
-					<a class="full-index" href="/dashboard" onclick={enter}>&gt; [ ACCESS_FULL_INDEX ]</a>
+					<a class="aqua-btn-blue launch" href="/dashboard" onclick={enter}>
+						[ Launch Desktop → ]
+					</a>
 				</div>
 			</main>
-
-			<!-- The machine boots, then hands off to the print. The shutter is the
-			     window's own body rather than the viewport, so the desktop, the menu bar
-			     and the dock stay put and the boot happens inside the document. Rendered
-			     only after mount, so the poster behind it keeps the LCP. The lines are all
-			     in the DOM and revealed by CSS delay, so jank cannot strand the sequence. -->
-			{#if booting}
-				<div class="boot" class:leaving={bootLeaving} aria-hidden="true">
-					<div class="boot-log">
-						{#each BOOT_LOG as line, index (index)}
-							<p style={`--i: ${index}`}>&gt; {line}</p>
-						{/each}
-						<pre class="boot-art">{#each BOOT_ART as artLine, index (index)}<span
-									style={`--i: ${index}`}
-								>{artLine}{'\n'}</span
-								>{/each}</pre>
-						<p style={`--i: ${BOOT_LOG.length + BOOT_ART.length}`} class="boot-handoff">
-							&gt; HANDOFF TO OPERATOR.<span class="boot-caret"></span>
-						</p>
-					</div>
-				</div>
-			{/if}
 		</div>
 
 	</section>
 </div>
+
+<!-- The machine boots, then hands off to the print. A full-screen overlay rather than a
+     shutter inside the document: the start-up is the OS waking up, so it covers the
+     desktop, the menu bar and the dock, and the README window is simply what is behind it
+     when it lifts. Rendered only after mount, so the poster keeps the LCP. The lines are
+     all in the DOM and revealed by CSS delay, so main-thread jank cannot strand the
+     sequence part-printed. -->
+{#if booting}
+	<div
+		class="boot"
+		class:leaving={bootLeaving}
+		aria-hidden="true"
+		onanimationend={(event) => {
+			// The log lines animate too, and `animationend` bubbles: without this guard the
+			// first 1ms line reveal would unmount the whole overlay.
+			if (event.target === event.currentTarget) endBoot();
+		}}
+	>
+		<div class="boot-log">
+			{#each BOOT_LOG as line, index (index)}
+				<p style={`--i: ${index}`}>&gt; {line}</p>
+			{/each}
+			<pre class="boot-art">{#each BOOT_ART as artLine, index (index)}<span style={`--i: ${index}`}
+					>{artLine}{'\n'}</span
+				>{/each}</pre>
+			<p style={`--i: ${BOOT_LOG.length + BOOT_ART.length}`} class="boot-handoff">
+				&gt; HANDOFF TO OPERATOR.<span class="boot-caret"></span>
+			</p>
+		</div>
+	</div>
+{/if}
 
 <div class="transition-overlay" bind:this={overlay} aria-hidden="true">
 	<canvas bind:this={wakeCanvas}></canvas>
@@ -561,15 +563,12 @@
 		gap: clamp(24px, 4.5vw, 88px);
 	}
 
-	/* The figure is exactly as wide as the print, so the captions align to its left edge.
-	   A percentage width rather than `fit-content`: the print now fills its column, and a
-	   fit-content plate would still be shrink-wrapped around the caption's colophon line. */
+	/* The plate now stands alone: the print is the only thing in this column that paints,
+	   so the figure has nothing underneath it to align to. */
 	.plate {
-		display: grid;
-		justify-items: start;
+		display: block;
 		width: 100%;
 		max-width: 100%;
-		gap: 14px;
 		min-width: 0;
 		margin: 0 auto;
 	}
@@ -643,54 +642,19 @@
 		height: 100%;
 	}
 
-	/* The plate is signed the way a proof is signed: mono, small, set under the print. The
-	   zero-width trick keeps the text from widening the figure past the print. */
-	.plate-caption {
-		display: grid;
-		gap: 4px;
-		width: 0;
-		min-width: 100%;
+	/* The Aqua call to action. It is a real anchor so the desktop can be opened in a new
+	   tab, mid-click-modifier and all; the glass bead is the shell, the terminal voice is
+	   dropped here because the button belongs to the chrome, not the document. */
+	.launch {
+		margin-top: 2px;
+		padding: 9px 20px;
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		line-height: 1.4;
-		letter-spacing: 0.06em;
-		text-align: left;
-	}
-
-	.fig {
-		text-transform: uppercase;
-		color: var(--color-ink);
-	}
-
-	.colophon {
-		color: var(--color-muted);
-	}
-
-	.terminal-caption {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 10.5px;
-		line-height: 1.4;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: var(--color-tertiary);
-	}
-
-	.full-index {
-		margin-top: -6px;
-		font-family: var(--font-terminal);
 		font-size: 12px;
-		line-height: 1.4;
-		letter-spacing: 0.12em;
-		color: var(--color-ink);
+		font-weight: 700;
+		line-height: 1.2;
+		letter-spacing: 0.06em;
 		text-decoration: none;
-	}
-
-	.full-index:hover,
-	.full-index:focus-visible {
-		color: #33ff00;
-		text-decoration: underline;
-		text-underline-offset: 0.4em;
+		white-space: nowrap;
 	}
 
 	.readout {
@@ -708,14 +672,19 @@
 	.headline {
 		margin: 0;
 		max-width: 100%;
-		font-family: var(--font-display);
+		/* Pixelita ships a single weight (400). Asking for 900 above made the browser
+		   synthesise a bold by smearing the letterforms, which on a pixel face reads as a
+		   blur rather than a heavier stroke — so the weight is stated, not inherited. */
+		font-family: 'Pixelita', var(--font-display), serif;
+		font-weight: 400;
 		/* The window is a fixed 900px card now, so the display type cannot scale off the
 		   viewport — `4.4vw` measured the screen and overflowed the 317px readout column
 		   into four wrapped lines. The ceiling is set by the column, not the display. */
 		font-size: clamp(2rem, 2.6vw, 2.5rem);
-		font-weight: 900;
-		line-height: 0.9;
-		letter-spacing: -0.04em;
+		line-height: 0.95;
+		/* Pixel type is drawn on a grid: negative tracking collides the blocks, and the
+		   face already carries its own sidebearings. */
+		letter-spacing: 0;
 		overflow-wrap: break-word;
 		color: #000000;
 	}
@@ -787,43 +756,57 @@
 	}
 
 	/* ---- The boot ---------------------------------------------------------------------
-	   A black shutter over the already-painted poster. It fades out, so the reveal is the
-	   poster being uncovered rather than being drawn: one mechanical beat, then the print.
-	   The shutter covers the window's body, not the screen — the desktop, the menu bar and
-	   the dock stay visible while the machine starts. */
+	   A full-screen phosphor terminal over the whole machine, not a shutter inside the
+	   document. It fades out, so the reveal is the desktop being uncovered rather than
+	   being drawn: one mechanical beat, then the wallpaper, the menu bar, the dock and the
+	   README window all at once. It is the OS starting up, so it is allowed to cover the
+	   chrome — that is what a boot screen does. */
 	.boot {
-		position: absolute;
+		position: fixed;
 		inset: 0;
-		z-index: 5;
+		z-index: 9999;
 		display: flex;
-		align-items: flex-end;
+		align-items: center;
 		justify-content: center;
 		padding: clamp(16px, 3vw, 40px);
+		box-sizing: border-box;
 		overflow: hidden;
 		background: #000;
-		color: #40f51a;
-		font-family: var(--font-terminal);
+		color: #33ff00;
+		font-family: 'Share Tech Mono', monospace;
 		font-size: clamp(0.72rem, 1.5vw, 0.95rem);
 		line-height: 1.5;
 		letter-spacing: 0.04em;
 		opacity: 1;
-		transition: opacity 200ms linear;
+	}
+
+	/* The lift. An animation, not a transition: a transition needs a painted frame after
+	   the class lands, and a blocked main thread meant the overlay was unmounted before it
+	   ever began to dissolve. `forwards` holds opacity at zero while the unmount timer
+	   runs, so the handoff never flashes the desktop back. */
+	.boot.leaving {
+		animation: boot-fade 500ms ease-out forwards;
+		/* The overlay is out of the hit-test the instant it starts fading: a visitor who
+		   clicks through the reveal should hit the page, not a ghost. */
 		pointer-events: none;
 	}
 
-	.boot.leaving {
-		opacity: 0;
+	@keyframes boot-fade {
+		to {
+			opacity: 0;
+		}
 	}
 
-	/* The console column. It is bottom-anchored and clipped: lines enter at the bottom and
-	   the block grows upward, the way a real boot log scrolls past. */
+	/* The console column. Centred, and clipped once it outgrows the screen: the log is a
+	   fixed script, so on a short viewport the tail is what should fall off, not the
+	   operator's feet. */
 	.boot-log {
 		display: flex;
 		flex-direction: column;
 		gap: 0.1rem;
 		width: min(100%, 62rem);
 		max-height: 100%;
-		justify-content: flex-end;
+		overflow: hidden;
 	}
 
 	.boot p,
@@ -834,7 +817,7 @@
 		/* Each line lands in sequence. The whole cascade is CSS, so main-thread jank
 		   cannot strand the sequence part-printed. */
 		animation: boot-line 1ms steps(1, end) forwards;
-		animation-delay: calc(var(--i) * 160ms);
+		animation-delay: calc(var(--i) * 110ms);
 	}
 
 	/* The mascot sprays out faster than the log types, so the art still resolves as a
@@ -852,14 +835,14 @@
 	}
 
 	.boot-art span {
-		animation-delay: calc(2150ms + var(--i) * 65ms);
+		animation-delay: calc(1450ms + var(--i) * 45ms);
 	}
 
 	.boot-handoff {
 		color: #e0ffe0;
 		/* Pinned to the tail of the cascade rather than derived from the line count, so the
-		   handoff always lands just before the shutter lifts. */
-		animation-delay: 3000ms;
+		   handoff always lands just before the overlay lifts. */
+		animation-delay: 2150ms;
 	}
 
 	@keyframes boot-line {

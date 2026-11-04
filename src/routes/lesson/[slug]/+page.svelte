@@ -26,12 +26,14 @@
 
 	const pad = (n: number) => String(n).padStart(2, '0');
 
-	/** The window's file name: the lesson as an executable in the OS façade. */
+	/** The window's file name: the lesson as an application in the OS façade. macOS
+	 *  extensions, not Windows ones — this desktop is Aqua, and `.app` is what a lesson
+	 *  bundle would be called here. */
 	const filename = $derived(
 		`W${pad(module.week)}_${module.title
 			.toUpperCase()
 			.replace(/[^A-Z0-9]+/g, '_')
-			.replace(/^_|_$/g, '')}.exe`
+			.replace(/^_|_$/g, '')}.app`
 	);
 
 	let trail = $state<HTMLDivElement | null>(null);
