@@ -60,6 +60,27 @@
 
 	let windowEl = $state<HTMLDivElement | null>(null);
 	let bumping = $state(false);
+
+	/** The window expands out of its Dock tile only when the dashboard just opened it. The
+	    flag is consumed here, at construction, so a reload or a move between lessons never
+	    replays it; the class is up before the first paint, so the window is never seen whole
+	    first. The class is cleared by the animation's own end, so a main thread busy hydrating
+	    the lesson cannot spend the opening before a frame has painted; the timer behind it
+	    only covers an animation that never runs. */
+	const OPEN_BACKSTOP_MS = 2000;
+	let opening = $state(
+		openWindows.windowOpening &&
+			typeof window !== 'undefined' &&
+			!window.matchMedia('(prefers-reduced-motion: reduce)').matches
+	);
+	openWindows.windowOpening = false;
+
+	$effect(() => {
+		if (!opening || !windowEl) return;
+		aimAtDock();
+		const timer = window.setTimeout(() => (opening = false), OPEN_BACKSTOP_MS);
+		return () => window.clearTimeout(timer);
+	});
 	const WINDOW_ID = 'lesson';
 	const FOCUS_BUMP_MS = 200;
 	const active = $derived(openWindows.activeWindowId === WINDOW_ID);
@@ -80,10 +101,15 @@
 	});
 
 	/** The genie aims at the lesson's Dock tile: the offsets run from the window's foot
-	    to the tile's centre, and the stylesheet narrows the window along them. */
+	    to the tile's centre, and the stylesheet narrows the window along them. Opening
+	    plays the same path backwards, so one measurement serves both directions. */
 	function aimAtDock(): void {
 		if (!windowEl) return;
+		// An animation in flight moves the box being measured, so the frame is read with it
+		// held off: the offsets must run from the window's resting place.
+		windowEl.style.animation = 'none';
 		const frame = windowEl.getBoundingClientRect();
+		windowEl.style.removeProperty('animation');
 		const tile = document.querySelector<HTMLElement>('.dock-icon[data-tip="Terminal"]');
 		const target = tile?.getBoundingClientRect();
 		const dx = target ? target.left + target.width / 2 - (frame.left + frame.width / 2) : 0;
@@ -168,7 +194,32 @@
 		{ id: 'terminal', label: 'Terminal' }
 	] as const;
 
+	/** The pane filter is a two-beat swap: the content fades out, the view changes while it
+	    is clear, and it fades back. `selectedPane` is the button the reader pressed and moves
+	    at once; `activePane` is the view on screen and moves in the middle of the swap. */
+	const PANE_FADE_MS = 120;
+	let selectedPane = $state<string>('all');
 	let activePane = $state<string>('all');
+	let switching = $state(false);
+	let paneTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function selectPane(id: string): void {
+		if (id === selectedPane) return;
+		selectedPane = id;
+		clearTimeout(paneTimer);
+		if (!exitsAnimated()) {
+			activePane = id;
+			switching = false;
+			return;
+		}
+		switching = true;
+		paneTimer = setTimeout(() => {
+			activePane = id;
+			switching = false;
+		}, PANE_FADE_MS);
+	}
+
+	$effect(() => () => clearTimeout(paneTimer));
 
 	// Reading the article is what marks a lesson opened; `complete()` is the
 	// only explicit act, so the dashboard never overstates progress.
@@ -200,7 +251,12 @@
 		class:bump={bumping}
 		class:closing={windowState === 'closing'}
 		class:minimizing={windowState === 'minimizing'}
+		class:opening
+		class:breathing={active && windowState === 'open' && !opening && !bumping && !maximized}
 		bind:this={windowEl}
+		onanimationend={(event) => {
+			if (event.target === event.currentTarget && opening) opening = false;
+		}}
 	>
 		<div class="crt-scan on" aria-hidden="true"></div>
 		<div class="title-bar aqua-pinstripes">
@@ -228,16 +284,22 @@
 					<button
 						type="button"
 						class="aqua-segmented-btn"
-						class:active={activePane === pane.id}
-						aria-pressed={activePane === pane.id}
-						onclick={() => (activePane = pane.id)}
+						class:active={selectedPane === pane.id}
+						aria-pressed={selectedPane === pane.id}
+						onclick={() => selectPane(pane.id)}
 					>
 						{pane.label}
 					</button>
 				{/each}
 			</div>
 		</div>
-		<div class="window-content" data-pane={activePane} data-mac-scroll bind:this={scroller}>
+		<div
+			class="window-content"
+			class:switching
+			data-pane={activePane}
+			data-mac-scroll
+			bind:this={scroller}
+		>
 			<main class="reader">
 				<div class="sheet">
 		<header class="hero">
@@ -621,6 +683,53 @@
 		transform: scale(0.85);
 	}
 
+	/* The yellow light run backwards: the window leaves the Dock tile and fills out into
+	   its frame. Backwards fill holds the first keyframe, so it is never drawn whole before
+	   the animation starts. */
+	.os-window.opening {
+		transform-origin: 50% 100%;
+		pointer-events: none;
+		animation: genie-open 400ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
+	}
+
+	@keyframes genie-open {
+		0% {
+			transform: translateX(var(--base-x)) translate(var(--genie-x, 0px), var(--genie-y, 0px))
+				scale(0.08, 0.04);
+			clip-path: polygon(0 0, 100% 0, 52% 100%, 48% 100%);
+			opacity: 0;
+		}
+		45% {
+			transform: translateX(var(--base-x))
+				translate(calc(var(--genie-x, 0px) * 0.35), calc(var(--genie-y, 0px) * 0.35)) scale(0.7, 0.8);
+			clip-path: polygon(0 0, 100% 0, 62% 100%, 38% 100%);
+			opacity: 1;
+		}
+		100% {
+			transform: translateX(var(--base-x)) translate(0, 0) scale(1, 1);
+			clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+			opacity: 1;
+		}
+	}
+
+	/* An open, focused window breathes: two pixels up and back over six seconds. It stops
+	   for anything else the window is doing, because each of those owns the transform. */
+	@media (min-width: 641px) {
+		.os-window.breathing {
+			animation: breathe 6s ease-in-out infinite;
+		}
+	}
+
+	@keyframes breathe {
+		0%,
+		100% {
+			transform: translateX(var(--base-x)) translateY(0);
+		}
+		50% {
+			transform: translateX(var(--base-x)) translateY(-2px);
+		}
+	}
+
 
 	/* The name is centred in the bar itself. The badge on the right is allowed to be wider
 	   than the light cluster on the left, so the offset is measured against the badge. */
@@ -647,6 +756,12 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		padding: 2rem;
+		transition: opacity 120ms ease-out;
+	}
+
+	/* The pane filter's middle beat: clear while the view changes underneath. */
+	.window-content.switching {
+		opacity: 0;
 	}
 
 	@media (max-width: 900px) {
@@ -730,8 +845,14 @@
 		}
 
 		.os-window.bump,
-		.os-window.minimizing {
+		.os-window.minimizing,
+		.os-window.opening,
+		.os-window.breathing {
 			animation: none;
+		}
+
+		.window-content {
+			transition: none;
 		}
 
 		.title-bar::before {

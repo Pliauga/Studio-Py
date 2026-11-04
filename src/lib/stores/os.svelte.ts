@@ -8,6 +8,10 @@ class OpenWindows {
 	isMinimized = $state(false);
 	/** The window that currently holds focus: its title bar is blue, every other is grey. */
 	activeWindowId = $state<string | null>(null);
+	/** Raised by the layout for the one navigation that opens the lesson window from the
+	 *  dashboard, and read once by the lesson on mount: only that arrival expands out of the
+	 *  Dock. A move between lessons remounts the same window and must not replay it. */
+	windowOpening = false;
 }
 
 export const openWindows = new OpenWindows();

@@ -16,7 +16,7 @@
 	 *  on `--i`, so main-thread jank cannot strand it part-printed); these two only place
 	 *  the fade and the unmount that follows it. */
 	const BOOT_HOLD_MS = 2500;
-	const BOOT_FADE_MS = 500;
+	const BOOT_FADE_MS = 400;
 
 	/** The system log. Counts and addresses are flavour: they describe a dying machine. */
 	const BOOT_LOG = [
@@ -192,7 +192,7 @@
 <!-- The landing is a document on the desktop: a README.md window resting on the
      work surface, with its own chrome, its own scroll box, and an action bar at its
      foot. The desktop, the menu bar and the dock belong to the layout. -->
-<div class="desktop">
+<div class="desktop" class:settling={bootLeaving}>
 	<section
 		class="mac-window"
 		class:closing={exit === 'closing'}
@@ -732,7 +732,7 @@
 	   ever began to dissolve. `forwards` holds opacity at zero while the unmount timer
 	   runs, so the handoff never flashes the desktop back. */
 	.boot.leaving {
-		animation: boot-fade 500ms ease-out forwards;
+		animation: boot-fade 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 		/* The overlay is out of the hit-test the instant it starts fading: a visitor who
 		   clicks through the reveal should hit the page, not a ghost. */
 		pointer-events: none;
@@ -741,6 +741,29 @@
 	@keyframes boot-fade {
 		to {
 			opacity: 0;
+		}
+	}
+
+	/* The handoff is a zoom through the screen: the console rushes past the viewer while
+	   the desktop behind it settles from slightly small to full size. */
+	.boot.leaving .boot-log {
+		animation: boot-zoom 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+	}
+
+	@keyframes boot-zoom {
+		to {
+			opacity: 0;
+			transform: scale(1.6);
+		}
+	}
+
+	.desktop.settling {
+		animation: desktop-settle 400ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
+	}
+
+	@keyframes desktop-settle {
+		from {
+			transform: scale(0.95);
 		}
 	}
 

@@ -720,6 +720,77 @@ select {
 	animation: plate-in 0.2s cubic-bezier(0.85, 0, 0.15, 1) both;
 }
 
+/* Between two lessons the window stays where it is and only its reading surface turns:
+   the layout raises `data-lesson-dir` for the move, which names the scroll pane so it is
+   captured as its own layer. The old pane leaves toward the lesson being left, the new
+   one arrives from the lesson being read, so Advance slides left and Return slides right.
+   The frame keeps still: a window does not move when the document in it changes. */
+html[data-lesson-dir] .window-content {
+	view-transition-name: lesson-content;
+}
+
+html[data-lesson-dir]::view-transition-old(page-transition),
+html[data-lesson-dir]::view-transition-new(page-transition) {
+	animation: none;
+	mix-blend-mode: normal;
+}
+
+::view-transition-group(lesson-content) {
+	animation: none;
+}
+
+::view-transition-old(lesson-content),
+::view-transition-new(lesson-content) {
+	mix-blend-mode: normal;
+	animation-duration: 300ms;
+	animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+	animation-fill-mode: both;
+}
+
+html[data-lesson-dir='next']::view-transition-old(lesson-content) {
+	animation-name: lesson-out-left;
+}
+
+html[data-lesson-dir='next']::view-transition-new(lesson-content) {
+	animation-name: lesson-in-right;
+}
+
+html[data-lesson-dir='prev']::view-transition-old(lesson-content) {
+	animation-name: lesson-out-right;
+}
+
+html[data-lesson-dir='prev']::view-transition-new(lesson-content) {
+	animation-name: lesson-in-left;
+}
+
+@keyframes lesson-out-left {
+	to {
+		opacity: 0;
+		transform: translateX(-40px);
+	}
+}
+
+@keyframes lesson-out-right {
+	to {
+		opacity: 0;
+		transform: translateX(40px);
+	}
+}
+
+@keyframes lesson-in-right {
+	from {
+		opacity: 0;
+		transform: translateX(40px);
+	}
+}
+
+@keyframes lesson-in-left {
+	from {
+		opacity: 0;
+		transform: translateX(-40px);
+	}
+}
+
 /* The head and the progress beam sit outside the named group, so the browser would
    cross-fade them while the page slides away. They are the one fixed thing on screen;
    they should not move at all. */
@@ -744,7 +815,9 @@ select {
 
 @media (prefers-reduced-motion: reduce) {
 	::view-transition-old(page-transition),
-	::view-transition-new(page-transition) {
+	::view-transition-new(page-transition),
+	::view-transition-old(lesson-content),
+	::view-transition-new(lesson-content) {
 		animation: none;
 		opacity: 1;
 		transform: none;

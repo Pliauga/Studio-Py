@@ -255,6 +255,10 @@
 		if (navigation.from) routed = fadeRouteChanges();
 	});
 
+	/** The lesson a pathname names, as its place in the course; -1 for any other route. */
+	const lessonIndex = (pathname: string | undefined): number =>
+		MODULES.findIndex((entry) => pathname === `/lesson/${entry.slug}`);
+
 	afterNavigate(() => {
 		closePortal();
 	});
@@ -268,6 +272,16 @@
 	// startViewTransition is what makes one CSS definition cover both kinds of move.
 	onNavigate((navigation) => {
 		const doc = document as ViewTransitionDocument;
+		const fromPath = navigation.from?.url.pathname;
+		const toPath = navigation.to?.url.pathname;
+		// The window expanding out of the Dock owns the dashboard-to-lesson move, so no
+		// route transition may fade the page underneath it.
+		openWindows.windowOpening =
+			fromPath?.startsWith('/dashboard') === true && lessonIndex(toPath) >= 0;
+		if (openWindows.windowOpening) {
+			routed = false;
+			return;
+		}
 		if (typeof doc.startViewTransition !== 'function') return;
 		// The ink portal already owns this navigation: it covers the viewport before `goto`
 		// and parts over the new page after it. A view transition paints its snapshots above
@@ -280,11 +294,20 @@
 		// route fade down whenever a transition is going to paint; `beforeNavigate` raises
 		// this flag again for the next move.
 		routed = false;
+		// Between two lessons the window stays put and only its content turns, towards
+		// the lesson being read: the stylesheet keys the slide on this direction.
+		const fromIndex = lessonIndex(fromPath);
+		const toIndex = lessonIndex(toPath);
+		const root = document.documentElement;
+		if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+			root.dataset.lessonDir = toIndex > fromIndex ? 'next' : 'prev';
+		}
 		return new Promise<void>((resolve) => {
-			doc.startViewTransition?.(async () => {
+			const transition = doc.startViewTransition?.(async () => {
 				resolve();
 				await navigation.complete;
 			});
+			void transition?.finished.finally(() => delete root.dataset.lessonDir);
 		});
 	});
 

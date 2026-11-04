@@ -63,11 +63,11 @@
 	<h1 class="sr-only">Module index</h1>
 
 	<ul class="icons">
-		{#each MODULES as module (module.slug)}
+		{#each MODULES as module, order (module.slug)}
 			{@const status = progress.statusOf(module.slug)}
 			{@const name = appName(module.week, module.title)}
 			{@const cut = name.indexOf('_') + 1}
-			<li>
+			<li style={`--index: ${order}`}>
 				<a
 					class="icon"
 					class:done={status === 'completed'}
@@ -178,8 +178,19 @@
 		list-style: none;
 	}
 
+	/* The tiles land one after another, thirty milliseconds apart in grid order. The
+	   backwards fill keeps each one clear until its own turn comes. */
 	.icons li {
 		min-width: 0;
+		animation: icon-enter 250ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+		animation-delay: calc(var(--index) * 30ms);
+	}
+
+	@keyframes icon-enter {
+		from {
+			opacity: 0;
+			transform: scale(0.8) translateY(8px);
+		}
 	}
 
 	/* One tile: the icon above, the file name below, and a rounded selection behind
@@ -206,6 +217,24 @@
 		/* The Aqua plates are pixel art; the tile renders them at 80px so the 2px blocks
 		   land on whole device pixels and stay square at the larger size. */
 		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+		transition:
+			transform 120ms var(--ease-standard),
+			filter 120ms var(--ease-standard);
+	}
+
+	/* A tile is a physical object: it lifts toward the pointer and presses back down
+	   under it. Only the sprite moves, so the label stays crisp and the selection plate
+	   stays where it was drawn. */
+	@media (hover: hover) {
+		.icon:hover .glyph {
+			transform: scale(1.08) translateY(-2px);
+			filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+		}
+	}
+
+	.icon:active .glyph {
+		transform: scale(0.96) translateY(0);
+		transition-duration: 60ms;
 	}
 
 	/* The SVGs carry their own four-colour palette on a transparent ground, so they
@@ -325,8 +354,14 @@
 			animation: none;
 		}
 
-		.icon {
+		.icon,
+		.glyph {
 			transition: none;
+		}
+
+		.icon:hover .glyph,
+		.icon:active .glyph {
+			transform: none;
 		}
 	}
 </style>
